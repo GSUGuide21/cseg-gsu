@@ -1,0 +1,342 @@
+:root {
+  /* Color scheme variables */
+  /* Background colors */ 
+  --background-light: #dfdfff;
+  --background-dark: #0a1456;
+  --background-hover-light: #d0d0ff;
+  --background-hover-dark: #0a0a4d;
+
+  /* Foreground colors */
+  --foreground-dark: #ededed;
+  --foreground-light: #171717;
+  --foreground-hover-light: #0a0a0a;
+  --foreground-hover-dark: #ededed;
+
+  /* Hover colors */
+  --hover-light: #0a0a0a;
+  --hover-dark: #ededed;
+  --hover-foreground-light: #ededed;
+  --hover-foreground-dark: #0a0a0a;
+
+  /* Active colors */
+  --active-light: #0a0a0a;
+  --active-dark: #ededed;
+  --active-foreground-light: #ededed;
+  --active-foreground-dark: #0a0a0a;
+
+  /* Focus colors */
+  --focus-light: #0a0a0a;
+  --focus-dark: #ededed;
+  --focus-foreground-light: #ededed;
+  --focus-foreground-dark: #0a0a0a;
+
+  /* Primary and secondary colors */
+  --primary-light: #1241b6;
+  --primary-dark: #09096a;
+  --primary-hover-light: #0f3c9b;
+  --primary-hover-dark: #0a0a4d;
+  --primary-active-light: #0c3580;
+  --primary-active-dark: #0a0a4d;
+  --primary-focus-light: #0a2e6b;
+  --primary-focus-dark: #0a0a4d;
+  --secondary-light: #30a0e0;
+  --secondary-dark: #10577f;
+  --secondary-hover-light: #2b8bc9;
+  --secondary-hover-dark: #0a4d6b;
+  --secondary-active-light: #2486b2;
+  --secondary-active-dark: #0a4d6b;
+  --secondary-focus-light: #1f7aa3;
+  --secondary-focus-dark: #0a4d6b;
+  --primary-foreground-light: #e1e1e1;
+  --primary-foreground-dark: #e1f7ff;
+  --primary-foreground-hover-light: #ffffff;
+  --primary-foreground-hover-dark: #ffffff;
+  --primary-foreground-active-light: #ffffff;
+  --primary-foreground-active-dark: #ffffff;
+  --primary-foreground-focus-light: #ffffff;
+  --primary-foreground-focus-dark: #ffffff;
+  --secondary-foreground-light: #1b1b31;
+  --secondary-foreground-dark: #d0e8fa;
+  --secondary-foreground-hover-light: #ffffff;
+  --secondary-foreground-hover-dark: #ffffff;
+  --secondary-foreground-active-light: #ffffff;
+  --secondary-foreground-active-dark: #ffffff;
+  --secondary-foreground-focus-light: #ffffff;
+  --secondary-foreground-focus-dark: #ffffff;
+
+  /* Disabled colors */
+  --disabled-light: #b0b0b0;
+  --disabled-foreground-light: #ffffff;
+  --disabled-secondary-light: #4d4d4d;
+  --disabled-secondary-foreground-light: #ffffff;
+  --disabled-dark: #4d4d4d;
+  --disabled-foreground-dark: #ededed;
+  --disabled-secondary-dark: #b0b0b0;
+  --disabled-secondary-foreground-dark: #ffffff;
+
+  /* Ghost colors */
+  --ghost-light: #ffffff;
+  --ghost-foreground-light: #171717;
+  --ghost-hover-light: #f0f0f0;
+  --ghost-foreground-hover-light: #171717;
+  --ghost-active-light: #e0e0e0;
+  --ghost-foreground-active-light: #171717;
+  --ghost-focus-light: #d0d0d0;
+  --ghost-foreground-focus-light: #171717;
+  --ghost-dark: #0a0a0a;
+  --ghost-foreground-dark: #ededed;
+  --ghost-hover-dark: #1a1a1a;
+  --ghost-foreground-hover-dark: #ededed;
+  --ghost-active-dark: #2a2a2a;
+  --ghost-foreground-active-dark: #ededed;
+  --ghost-focus-dark: #3a3a3a;
+  --ghost-foreground-focus-dark: #ededed;
+
+  /* Warning, error, success, and info colors */
+  --warning: #ffcc00;
+  --warning-foreground: #171717;
+  --warning-hover: #ff9900;
+  --warning-foreground-hover: #171717;
+  --warning-active: #ff6600;
+  --warning-foreground-active: #171717;
+  --warning-focus: #ff3300;
+  --warning-foreground-focus: #171717;
+  --error: #ff0000;
+  --error-foreground: #ffffff;
+  --error-hover: #cc0000;
+  --error-foreground-hover: #ffffff;
+  --error-active: #990000;
+  --error-foreground-active: #ffffff;
+  --error-focus: #660000;
+  --error-foreground-focus: #ffffff;
+  --success: #00ff00;
+  --success-foreground: #171717;
+  --success-hover: #00cc00;
+  --success-foreground-hover: #171717;
+  --success-active: #009900;
+  --success-foreground-active: #171717;
+  --success-focus: #006600;
+  --success-foreground-focus: #171717;
+  --info: #00ffff;
+  --info-foreground: #171717;
+  --info-hover: #00cccc;
+  --info-foreground-hover: #171717;
+  --info-active: #009999;
+  --info-foreground-active: #171717;
+  --info-focus: #006666;
+  --info-foreground-focus: #171717;
+
+  /* Setting the default color scheme */
+  --background: var(--background-light);
+  --background-hover: var(--background-hover-light);
+  --foreground: var(--foreground-light);
+  --foreground-hover: var(--foreground-hover-light);
+  --primary: var(--primary-light);
+  --primary-foreground: var(--primary-foreground-light);
+  --primary-hover: var(--primary-hover-light);
+  --primary-foreground-hover: var(--primary-foreground-hover-light);
+  --primary-active: var(--primary-active-light);
+  --primary-foreground-active: var(--primary-foreground-active-light);
+  --primary-focus: var(--primary-focus-light);
+  --primary-foreground-focus: var(--primary-foreground-focus-light);
+  --secondary: var(--secondary-light);
+  --secondary-foreground: var(--secondary-foreground-light);
+  --secondary-hover: var(--secondary-hover-light);
+  --secondary-foreground-hover: var(--secondary-foreground-hover-light);
+  --secondary-active: var(--secondary-active-light);
+  --secondary-foreground-active: var(--secondary-foreground-active-light);
+  --secondary-focus: var(--secondary-focus-light);
+  --secondary-foreground-focus: var(--secondary-foreground-focus-light);
+  --disabled: var(--disabled-light);
+  --disabled-foreground: var(--disabled-foreground-light);
+  --disabled-secondary: var(--disabled-secondary-light);
+  --disabled-secondary-foreground: var(--disabled-secondary-foreground-light);
+  --ghost: var(--ghost-light);
+  --ghost-foreground: var(--ghost-foreground-light);
+  --ghost-hover: var(--ghost-hover-light);
+  --ghost-foreground-hover: var(--ghost-foreground-hover-light);
+  --ghost-active: var(--ghost-active-light);
+  --ghost-foreground-active: var(--ghost-foreground-active-light);
+  --ghost-focus: var(--ghost-focus-light);
+  --ghost-foreground-focus: var(--ghost-foreground-focus-light);
+
+  @media (prefers-color-scheme: dark) {
+    --background: var(--background-dark);
+    --background-hover: var(--background-hover-dark);
+    --foreground: var(--foreground-dark);
+    --foreground-hover: var(--foreground-hover-dark);
+    --primary: var(--primary-dark);
+    --primary-foreground: var(--primary-foreground-dark);
+    --primary-hover: var(--primary-hover-dark);
+    --primary-foreground-hover: var(--primary-foreground-hover-dark);
+    --primary-active: var(--primary-active-dark);
+    --primary-foreground-active: var(--primary-foreground-active-dark);
+    --primary-focus: var(--primary-focus-dark);
+    --primary-foreground-focus: var(--primary-foreground-focus-dark);
+    --secondary: var(--secondary-dark);
+    --secondary-foreground: var(--secondary-foreground-dark);
+    --secondary-hover: var(--secondary-hover-dark);
+    --secondary-foreground-hover: var(--secondary-foreground-hover-dark);
+    --secondary-active: var(--secondary-active-dark);
+    --secondary-foreground-active: var(--secondary-foreground-active-dark);
+    --secondary-focus: var(--secondary-focus-dark);
+    --secondary-foreground-focus: var(--secondary-foreground-focus-dark);
+  }
+}
+
+.dark {
+  --background: var(--background-dark);
+  --background-hover: var(--background-hover-dark);
+  --foreground: var(--foreground-dark);
+  --foreground-hover: var(--foreground-hover-dark);
+  --primary: var(--primary-dark);
+  --primary-foreground: var(--primary-foreground-dark);
+  --primary-hover: var(--primary-hover-dark);
+  --primary-foreground-hover: var(--primary-foreground-hover-dark);
+  --primary-active: var(--primary-active-dark);
+  --primary-foreground-active: var(--primary-foreground-active-dark);
+  --primary-focus: var(--primary-focus-dark);
+  --primary-foreground-focus: var(--primary-foreground-focus-dark);
+  --secondary: var(--secondary-dark);
+  --secondary-foreground: var(--secondary-foreground-dark);
+  --secondary-hover: var(--secondary-hover-dark);
+  --secondary-foreground-hover: var(--secondary-foreground-hover-dark);
+  --secondary-active: var(--secondary-active-dark);
+  --secondary-foreground-active: var(--secondary-foreground-active-dark);
+  --secondary-focus: var(--secondary-focus-dark);
+  --secondary-foreground-focus: var(--secondary-foreground-focus-dark);
+  --disabled: var(--disabled-dark);
+  --disabled-foreground: var(--disabled-foreground-dark);
+  --disabled-secondary: var(--disabled-secondary-dark);
+  --disabled-secondary-foreground: var(--disabled-secondary-foreground-dark);
+  --ghost: var(--ghost-dark);
+  --ghost-foreground: var(--ghost-foreground-dark);
+  --ghost-hover: var(--ghost-hover-dark);
+  --ghost-foreground-hover: var(--ghost-foreground-hover-dark);
+  --ghost-active: var(--ghost-active-dark);
+  --ghost-foreground-active: var(--ghost-foreground-active-dark);
+  --ghost-focus: var(--ghost-focus-dark);
+  --ghost-foreground-focus: var(--ghost-foreground-focus-dark);
+
+  @media (prefers-color-scheme: dark) {
+    --background: var(--background-light);
+    --background-hover: var(--background-hover-light);
+    --foreground: var(--foreground-light);
+    --foreground-hover: var(--foreground-hover-light);
+    --primary: var(--primary-light);
+    --primary-foreground: var(--primary-foreground-light);
+    --primary-hover: var(--primary-hover-light);
+    --primary-foreground-hover: var(--primary-foreground-hover-light);
+    --primary-active: var(--primary-active-light);
+    --primary-foreground-active: var(--primary-foreground-active-light);
+    --primary-focus: var(--primary-focus-light);
+    --primary-foreground-focus: var(--primary-foreground-focus-light);
+    --secondary: var(--secondary-light);
+    --secondary-foreground: var(--secondary-foreground-light);
+    --secondary-hover: var(--secondary-hover-light);
+    --secondary-foreground-hover: var(--secondary-foreground-hover-light);
+    --secondary-active: var(--secondary-active-light);
+    --secondary-foreground-active: var(--secondary-foreground-active-light);
+    --secondary-focus: var(--secondary-focus-light);
+    --secondary-foreground-focus: var(--secondary-foreground-focus-light);
+    --disabled: var(--disabled-light);
+    --disabled-foreground: var(--disabled-foreground-light);
+    --disabled-secondary: var(--disabled-secondary-light);
+    --disabled-secondary-foreground: var(--disabled-secondary-foreground-light);
+    --ghost: var(--ghost-light);
+    --ghost-foreground: var(--ghost-foreground-light);
+    --ghost-hover: var(--ghost-hover-light);
+    --ghost-foreground-hover: var(--ghost-foreground-hover-light);
+    --ghost-active: var(--ghost-active-light);
+    --ghost-foreground-active: var(--ghost-foreground-active-light);
+    --ghost-focus: var(--ghost-focus-light);
+    --ghost-foreground-focus: var(--ghost-foreground-focus-light);
+  }
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--font-montserrat);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page {
+  color: var(--foreground);
+  background: var(--background);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+/* :root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+  }
+}
+ */

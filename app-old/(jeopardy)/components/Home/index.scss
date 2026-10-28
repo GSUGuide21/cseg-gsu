@@ -1,0 +1,25 @@
+.jeopardy-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+
+  .jeopardy-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    &__text {
+      font-size: 2rem;
+      margin-bottom: 0.2rem;
+    }
+
+    &__container {
+      position: relative;
+      min-width: 250px;
+      min-height: 100px;
+    }
+  }
+}

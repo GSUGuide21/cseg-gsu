@@ -1,0 +1,472 @@
+.button {
+  background-color: var(--primary);
+  border: none;
+  border-radius: 4px;
+  color: var(--primary-foreground);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 10px 20px;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: var(--primary-hover);
+    color: var(--primary-foreground-hover);
+  }
+
+  &:active {
+    background-color: var(--primary-active);
+    color: var(--primary-foreground-active);
+  }
+
+  &:focus {
+    background-color: var(--primary-focus);
+    color: var(--primary-foreground-focus);
+  }
+
+  &.full-width {
+    width: 100%;
+  }
+
+  &--variant-secondary {
+    background-color: var(--secondary);
+    color: var(--secondary-foreground);
+
+    &:hover {
+      background-color: var(--secondary-hover);
+      color: var(--secondary-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--secondary-active);
+      color: var(--secondary-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--secondary-focus);
+      color: var(--secondary-foreground-focus);
+    }
+  }
+
+  // Variant for outline buttons
+  &--variant-outline {
+    background-color: transparent;
+    border: 2px solid var(--primary);
+    color: var(--primary);
+
+    &:hover {
+      background-color: var(--primary-hover);
+      color: var(--primary-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--primary-active);
+      color: var(--primary-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--primary-focus);
+      color: var(--primary-foreground-focus);
+    }
+  }
+
+  // Variant for ghost buttons
+  &--variant-ghost {
+    background-color: transparent;
+    border: none;
+    color: var(--primary);
+
+    &:hover {
+      background-color: var(--primary-hover);
+      color: var(--primary-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--primary-active);
+      color: var(--primary-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--primary-focus);
+      color: var(--primary-foreground-focus);
+    }
+  }
+
+  // Variant for link buttons
+  &--variant-link {
+    background-color: transparent;
+    border: none;
+    color: var(--foreground);
+
+    &:hover {
+      background-color: var(--link-hover);
+      color: var(--link-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--link-active);
+      color: var(--link-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--link-focus);
+      color: var(--link-foreground-focus);
+    }
+  }
+
+  // Variant for warning buttons
+  &--variant-warning {
+    background-color: var(--warning);
+    color: var(--warning-foreground);
+
+    &:hover {
+      background-color: var(--warning-hover);
+      color: var(--warning-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--warning-active);
+      color: var(--warning-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--warning-focus);
+      color: var(--warning-foreground-focus);
+    }
+  }
+
+  // Variant for success buttons
+  &--variant-success {
+    background-color: var(--success);
+    color: var(--success-foreground);
+
+    &:hover {
+      background-color: var(--success-hover);
+      color: var(--success-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--success-active);
+      color: var(--success-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--success-focus);
+      color: var(--success-foreground-focus);
+    }
+  }
+
+  // Variant for error or danger buttons
+  &--variant-danger,
+  &--variant-error {
+    background-color: var(--error);
+    color: var(--error-foreground);
+
+    &:hover {
+      background-color: var(--error-hover);
+      color: var(--error-foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--error-active);
+      color: var(--error-foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--error-focus);
+      color: var(--error-foreground-focus);
+    }
+  }
+
+  // Variant for link buttons
+  &--variant-link {
+    background-color: transparent;
+    border: none;
+    color: var(--foreground);
+
+    &:hover {
+      background-color: var(--hover);
+      color: var(--foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--active);
+      color: var(--foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--focus);
+      color: var(--foreground-focus);
+    }
+  }
+
+  // Variant for disabled buttons
+  &--variant-disabled {
+    background-color: var(--disabled);
+    color: var(--disabled-foreground);
+    cursor: not-allowed;
+
+    &:hover,
+    &:active,
+    &:focus {
+      background-color: var(--disabled);
+      color: var(--disabled-foreground);
+    }
+  }
+
+  // Variant for text buttons
+  &--variant-text {
+    background-color: transparent;
+    border: none;
+    color: var(--foreground);
+
+    &:hover {
+      background-color: var(--hover);
+      color: var(--foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--active);
+      color: var(--active-foreground);
+    }
+
+    &:focus {
+      background-color: var(--focus);
+      color: var(--focus-foreground);
+    }
+  }
+
+  &--size-micro {
+    font-size: 4px;
+    padding: 1px 2px;
+  }
+
+  &--size-mini {
+    font-size: 6px;
+    padding: 2px 4px;
+  }
+
+  &--size-tiny {
+    font-size: 7px;
+    padding: 2px 5px;
+  }
+
+  &--size-xxxs {
+    font-size: 8px;
+    padding: 3px 6px;
+  }
+
+  &--size-xxs {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  &--size-xs {
+    font-size: 12px;
+    padding: 5px 10px;
+  }
+
+  &--size-small {
+    font-size: 14px;
+    padding: 8px 16px;
+  }
+
+  &--size-medium {
+    font-size: 16px;
+    padding: 10px 20px;
+  }
+
+  &--size-large {
+    font-size: 18px;
+    padding: 12px 24px;
+  }
+
+  &--size-xl {
+    font-size: 20px;
+    padding: 14px 28px;
+  }
+
+  &--size-xxl {
+    font-size: 22px;
+    padding: 16px 32px;
+  }
+
+  &--size-xxxl {
+    font-size: 24px;
+    padding: 18px 36px;
+  }
+
+  &--size-giant {
+    font-size: 26px;
+    padding: 20px 40px;
+  }
+
+  &--size-huge {
+    font-size: 28px;
+    padding: 22px 44px;
+  }
+
+  &--size-massive {
+    font-size: 30px;
+    padding: 24px 48px;
+  }
+
+  &--size-colossal {
+    font-size: 32px;
+    padding: 26px 52px;
+  }
+
+  &--size-gargantuan {
+    font-size: 34px;
+    padding: 28px 56px;
+  }
+
+  &--size-titanic {
+    font-size: 36px;
+    padding: 30px 60px;
+  }
+
+  &--size-leviathan {
+    font-size: 38px;
+    padding: 32px 64px;
+  }
+
+  &--size-behemoth {
+    font-size: 40px;
+    padding: 34px 68px;
+  }
+
+  &--size-mammoth {
+    font-size: 42px;
+    padding: 36px 72px;
+  }
+
+  // Icon button styles
+  &--icon {
+    background-color: transparent;
+    border: none;
+    color: var(--foreground);
+    padding: 0;
+
+    &:hover {
+      background-color: var(--hover);
+      color: var(--foreground-hover);
+    }
+
+    &:active {
+      background-color: var(--active);
+      color: var(--foreground-active);
+    }
+
+    &:focus {
+      background-color: var(--focus);
+      color: var(--foreground-focus);
+    }
+
+    &-micro {
+      font-size: 4px;
+      padding: 1px 2px;
+    }
+
+    &-mini {
+      font-size: 6px;
+      padding: 2px 4px;
+    }
+
+    &-tiny {
+      font-size: 7px;
+      padding: 2px 5px;
+    }
+
+    &-xxxs {
+      font-size: 8px;
+      padding: 3px 6px;
+    }
+
+    &-xxs {
+      font-size: 10px;
+      padding: 4px 8px;
+    }
+
+    &-xs {
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+
+    &-small {
+      font-size: 14px;
+      padding: 8px 16px;
+    }
+
+    &-medium {
+      font-size: 16px;
+      padding: 10px 20px;
+    }
+
+    &-large {
+      font-size: 18px;
+      padding: 12px 24px;
+    }
+
+    &-xl {
+      font-size: 20px;
+      padding: 14px 28px;
+    }
+
+    &-xxl {
+      font-size: 22px;
+      padding: 16px 32px;
+    }
+
+    &-xxxl {
+      font-size: 24px;
+      padding: 18px 36px;
+    }
+
+    &-giant {
+      font-size: 26px;
+      padding: 20px 40px;
+    }
+
+    &-huge {
+      font-size: 28px;
+      padding: 22px 44px;
+    }
+
+    &-massive {
+      font-size: 30px;
+      padding: 24px 48px;
+    }
+
+    &-colossal {
+      font-size: 32px;
+      padding: 26px 52px;
+    }
+
+    &-gargantuan {
+      font-size: 34px;
+      padding: 28px 56px;
+    }
+
+    &-titanic {
+      font-size: 36px;
+      padding: 30px 60px;
+    }
+
+    &-leviathan {
+      font-size: 38px;
+      padding: 32px 64px;
+    }
+
+    &-behemoth {
+      font-size: 40px;
+      padding: 34px 68px;
+    }
+
+    &-mammoth {
+      font-size: 42px;
+      padding: 36px 72px;
+    }
+  }
+}

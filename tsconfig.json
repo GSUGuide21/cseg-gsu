@@ -1,0 +1,77 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "incremental": true,
+    "types": [
+      "node",
+      "jest",
+      "@testing-library/jest-dom",
+      "@testing-library/react"
+    ],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./app/*"
+      ],
+      "@app/*": [
+        "app-old-2/*"
+      ],
+      "@assets/*": [
+        "./public/assets/*"
+      ],
+      "@contexts/*": [
+        "app-old-2/contexts/*"
+      ],
+      "@components/*": [
+        "app-old-2/components/*"
+      ],
+      "@jeopardy/*": [
+        "app-old-2/(jeopardy)/*"
+      ],
+      "@main/*": [
+        "app-old-2/(main)/*"
+      ],
+      "@hooks/*": [
+        "app/hooks/*"
+      ],
+      "@lib/*": [
+        "app/lib/*"
+      ],
+      "@ui/*": [
+        "app-old-2/components/ui/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "app-old",
+    "app-old-2"
+  ]
+}

@@ -1,0 +1,41 @@
+.accordion {
+  display: flex;
+  flex-direction: column;
+  margin: 1rem;
+  background-color: var(--secondary);
+
+  &-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+
+    &:hover {
+      background-color: var(--primary-hover);
+    }
+
+    &__title {
+      font-size: 1.25rem;
+      font-weight: bold;
+    }
+
+    &__icon {
+      font-size: 1.5rem;
+      transition: transform 0.3s ease;
+
+      &--open {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  &-item {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    color: var(--secondary-foreground);
+  }
+}

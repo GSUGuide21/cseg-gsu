@@ -1,0 +1,5 @@
+export { Header } from "./Header"
+export { Content } from "./Content"
+export { Footer } from "./Footer"
+export { Wrapper } from "./Wrapper"
+import "./index.scss"
