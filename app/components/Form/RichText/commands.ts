@@ -11,7 +11,19 @@ import {
   $setTableRowIsHeader,
   TableCellHeaderStates,
 } from '@lexical/table'
-import { $getPreviousSelection, $getRoot, $getSelection, $isParagraphNode, $isRangeSelection, $isTextNode } from 'lexical'
+import {
+  $createParagraphNode,
+  $getPreviousSelection,
+  $getRoot,
+  $getSelection,
+  $isElementNode,
+  $isParagraphNode,
+  $isRangeSelection,
+  $isTextNode,
+  $parseSerializedNode,
+  type LexicalNode,
+  type SerializedLexicalNode,
+} from 'lexical'
 
 /**
  * Puts a block in (an image, a table, buttons) with `insert`; when the cursor was on an
@@ -63,6 +75,34 @@ export const TABLE_ACTIONS: { label: string; danger?: boolean; $run: () => void 
   { label: 'Delete row', danger: true, $run: () => $deleteTableRowAtSelection() },
   { label: 'Delete column', danger: true, $run: () => $deleteTableColumnAtSelection() },
   { label: 'Delete table', danger: true, $run: $deleteTableAtSelection },
+]
+
+/** The block the selection starts in: its own, whole, however deep the cursor is (a table, a list) */
+export const $selectedBlock = () => $getSelection()?.getNodes()[0]?.getTopLevelElement() ?? null
+
+/** A node and everything in it, as saved */
+const serialized = (node: LexicalNode): SerializedLexicalNode => ({
+  ...node.exportJSON(),
+  ...($isElementNode(node) ? { children: node.getChildren().map(serialized) } : {}),
+})
+
+const $moveBlock = (block: LexicalNode, by: 1 | -1) => {
+  if (by < 0) block.getPreviousSibling()?.insertBefore(block)
+  else block.getNextSibling()?.insertAfter(block)
+}
+
+/** The block a menu or shortcut is pointing at can be the only one; there's then a line left to type on */
+const $deleteBlock = (block: LexicalNode) => {
+  block.remove()
+  if ($getRoot().isEmpty()) $getRoot().append($createParagraphNode()).selectEnd()
+}
+
+/** What can be done to a whole block, from its gutter, the context menu, or the keyboard; each runs inside editor.update */
+export const BLOCK_ACTIONS: { label: string; keys: string[]; danger?: boolean; $can?: (block: LexicalNode) => boolean; $run: (block: LexicalNode) => void }[] = [
+  { label: 'Move up', keys: ['alt', '↑'], $can: (b) => !!b.getPreviousSibling(), $run: (b) => $moveBlock(b, -1) },
+  { label: 'Move down', keys: ['alt', '↓'], $can: (b) => !!b.getNextSibling(), $run: (b) => $moveBlock(b, 1) },
+  { label: 'Duplicate', keys: ['alt', 'shift', '↓'], $run: (b) => b.insertAfter($parseSerializedNode(serialized(b))) },
+  { label: 'Delete block', keys: [], danger: true, $run: $deleteBlock },
 ]
 
 /** Back to plain text: no bold through code, and no font, size, or colors */

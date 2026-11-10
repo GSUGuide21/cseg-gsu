@@ -6,7 +6,7 @@ import { RichTextEditor, type RichTextValue } from '@/components/Form'
 import { joinSections } from '../app/(dashboard)/dashboard/SectionsEditor'
 import { parseDocument, parseSections } from '@/lib/dashboard/validate'
 import { DocumentBody, PageSections, plainText } from '@/lib/richtext'
-import { videoFromUrl } from '@/lib/richtext/blocks'
+import { parseRankings, videoFromUrl } from '@/lib/richtext/blocks'
 
 /** A saved document: the editor's JSON around these blocks */
 const saved = (...children: object[]) => JSON.stringify({ root: { type: 'root', version: 1, children } })
@@ -419,6 +419,65 @@ describe('FAQ, steps, cards, and video', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Highlights' } })
     fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
     await waitFor(() => expect(JSON.parse(last!.json).root.children.find((b: { type: string }) => b.type === 'video')).toMatchObject({ provider: 'vimeo', id: '76979871', title: 'Highlights' }))
+  })
+})
+
+describe('rankings', () => {
+  const ranking = (items: object[]) => saved({ type: 'ranking', version: 1, items })
+
+  it('shows picks in order, numbered, with their line and why, dropping any without a title', () => {
+    render(
+      <DocumentBody
+        source={ranking([
+          { title: 'Library North, 4th floor', subtitle: 'Quiet floor', description: 'Outlets **everywhere**. See [the map](/map).' },
+          { title: '' , description: 'No title, dropped' },
+          { title: 'Student Center East' },
+        ])}
+      />
+    )
+    const picks = screen.getAllByRole('listitem')
+    expect(picks).toHaveLength(2)
+    expect(within(picks[0]).getByRole('heading', { name: 'Number 1: Library North, 4th floor' })).toBeInTheDocument()
+    expect(within(picks[0]).getByText('Quiet floor')).toBeInTheDocument()
+    expect(within(picks[0]).getByText('everywhere').tagName).toBe('STRONG')
+    expect(within(picks[0]).getByRole('link', { name: 'the map' })).toHaveAttribute('href', '/map')
+    expect(within(picks[1]).getByRole('heading', { name: 'Number 2: Student Center East' })).toBeInTheDocument()
+    expect(screen.queryByText('No title, dropped')).not.toBeInTheDocument()
+  })
+
+  it('keeps blocks and list items on lines of their own in the plain text, and a paragraph’s words together', () => {
+    const para = (...words: string[]) => ({ type: 'paragraph', version: 1, children: words.map(text) })
+    const item = (words: string) => ({ type: 'listitem', version: 1, children: [text(words)] })
+    expect(plainText(saved(para('Welcome, ', 'Panthers.'), { type: 'list', version: 1, children: [item('Get your card'), item('Find your class')] }, para('See you there.')))).toBe(
+      'Welcome, Panthers.\nGet your card\nFind your class\nSee you there.'
+    )
+  })
+
+  it('shows a pick with only a title, with nothing empty under it', () => {
+    render(<DocumentBody source={ranking([{ title: 'Student Center East' }, { title: 'CURVE', description: '   ' }])} />)
+    const picks = screen.getAllByRole('listitem')
+    expect(picks).toHaveLength(2)
+    for (const pick of picks) expect(pick.querySelectorAll('p')).toHaveLength(0)
+    expect(parseRankings([{ title: 'CURVE', subtitle: '', description: '   ' }])).toEqual([{ title: 'CURVE' }])
+    expect(plainText(ranking([{ title: 'CURVE' }]))).toBe('CURVE')
+  })
+
+  it('counts its words', () => {
+    expect(plainText(ranking([{ title: 'Library North', subtitle: 'Quiet floor', description: '**Outlets**' }]))).toBe('Library North\nQuiet floor\nOutlets')
+  })
+
+  it('is inserted from the ribbon, in the order the picks are listed', async () => {
+    let last: RichTextValue | null = null
+    render(<RichTextEditor aria-label="Body" toolbar="ribbon" onChange={(v) => (last = v)} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Insert' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ranking' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getAllByLabelText(/Title/)[0], { target: { value: 'Library North' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Insert' }))
+    await waitFor(() =>
+      // Only a title: the blank subtitle and description aren't saved at all
+      expect(JSON.parse(last!.json).root.children.find((b: { type: string }) => b.type === 'ranking').items).toEqual([{ title: 'Library North' }])
+    )
   })
 })
 

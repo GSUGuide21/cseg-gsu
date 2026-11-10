@@ -12,6 +12,10 @@ const customJestConfig: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jsdom',
   verbose: true,
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  // The rich text editor and whole dashboard screens are slow to render in jsdom when every
+  // test file runs at once; the default 5 seconds fails them at random
+  testTimeout: 20_000,
 }
 
 /**

@@ -14,11 +14,7 @@ export function usePopover(room = 340) {
   const triggerRef = useRef<HTMLButtonElement>(null)
 
   const show = useCallback(() => {
-    const box = rootRef.current?.getBoundingClientRect()
-    if (box) {
-      const below = window.innerHeight - box.bottom
-      setAbove(below < room && box.top > below)
-    }
+    if (rootRef.current) setAbove(opensAbove(rootRef.current, room))
     setOpen(true)
   }, [room])
 
@@ -86,6 +82,24 @@ function fitToScreen(el: HTMLElement) {
   if (box.right > width - EDGE) shift = width - EDGE - box.right
   if (box.left + shift < EDGE) shift = EDGE - box.left
   if (shift) el.style.translate = `${Math.round(shift)}px 0`
+}
+
+/** The part of the screen `el` can show in: the window, or less inside something that clips or scrolls */
+function visibleEdges(el: HTMLElement) {
+  for (let parent = el.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+    if (!/auto|scroll|hidden|clip/.test(getComputedStyle(parent).overflowY)) continue
+    const box = parent.getBoundingClientRect()
+    return { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, window.innerHeight) }
+  }
+  return { top: 0, bottom: window.innerHeight }
+}
+
+/** Whether a panel under `el` should open upward: less than `room` px of space below, and more above */
+export function opensAbove(el: HTMLElement, room: number) {
+  const box = el.getBoundingClientRect()
+  const { top, bottom } = visibleEdges(el)
+  const below = bottom - box.bottom
+  return below < room && box.top - top > below
 }
 
 /** The panel's position under (or over) its control */

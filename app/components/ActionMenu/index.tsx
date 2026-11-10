@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal } from 'lucide-react'
+import { Check, MoreHorizontal } from 'lucide-react'
 import Link from 'next/link'
 import { cloneElement, Fragment, useEffect, useId, useRef, useState, type FC, type KeyboardEvent, type ReactNode } from 'react'
 
@@ -145,8 +145,10 @@ export const ActionMenu: FC<ActionMenuProps> = ({
   const renderItem = (item: ActionItem) => {
     index += 1
     const i = index
+    const toggles = item.checked !== undefined
     const body: ReactNode = (
       <>
+        {toggles ? <span className="grid size-4 shrink-0 place-items-center text-brand">{item.checked ? <Check size={16} aria-hidden /> : null}</span> : null}
         {item.icon ? <span className={cn('shrink-0 [&>svg]:size-4', item.danger ? 'text-danger' : 'text-ink-soft')}>{item.icon}</span> : null}
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">{item.label}</span>
@@ -161,7 +163,8 @@ export const ActionMenu: FC<ActionMenuProps> = ({
       item.disabled && 'cursor-not-allowed opacity-45'
     )
     const shared = {
-      role: 'menuitem',
+      role: toggles ? 'menuitemcheckbox' : 'menuitem',
+      'aria-checked': item.checked,
       'data-index': i,
       tabIndex: -1,
       'aria-disabled': item.disabled || undefined,
@@ -182,7 +185,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({
         {...shared}
         onClick={() => {
           if (item.disabled) return
-          close(true)
+          if (!toggles) close(true)
           item.onSelect?.()
         }}
       >

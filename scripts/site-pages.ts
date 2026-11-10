@@ -1,5 +1,5 @@
 /**
- * The site's own pages (About, Join, Contact, Resources, Places to Eat) as dashboard pages:
+ * The site's own pages (About, Join, Contact, Resources, Places to Eat, Constitution) as dashboard pages:
  * the same words, laid out in sections of the editor's blocks (cards, an FAQ, steps, a
  * callout, buttons, a list, live References). seed-site-pages.ts writes them to Supabase as
  * drafts; once an officer publishes one, it shows at the page's own path in place of the
@@ -9,15 +9,29 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import { BookOpen, Building2, GraduationCap, HeartHandshake, HeartPulse, Sparkles, Users, Wallet, type LucideIcon } from 'lucide-react'
-
 import { JOIN_STEPS } from '../app/globals/config/club'
 import { CLUB_DESCRIPTION } from '../app/globals/config/site'
 import { CONTACT_EMAIL, SOCIAL_LINKS } from '../app/globals/config/social'
-import { EAT_LINKS, EAT_TIPS, EATS_CHECKED, MORE_EATS } from '../app/lib/data/eats'
-import { EAT_AREA_LIST, EAT_AREAS, type EatArea, type EateryKind } from '../app/lib/eateries'
+import { formatDate } from '../app/lib/dashboard/format'
+import {
+  articleHeading,
+  articleId,
+  CONSTITUTION_ARTICLES,
+  CONSTITUTION_GLOSSARY,
+  CONSTITUTION_HISTORY,
+  CONSTITUTION_TERM,
+  type ConstitutionBlock,
+  type ConstitutionItem,
+  GLOSSARY_ID,
+  HISTORY_ID,
+  sectionHeading,
+  withLinks,
+} from '../app/lib/data/constitution'
+import { EAT_LINKS, EAT_TIPS, EATERIES, EATS_CHECKED, MORE_EATS } from '../app/lib/data/eats'
+import { getPlace } from '../app/lib/data/places'
+import { BUILT_IN_AREAS, eateryMapId, findArea, type EatArea, type EateryKind } from '../app/lib/eateries'
 import { eateriesRef } from '../app/lib/references'
-import { GROUP_CHATS, RESOURCE_GROUPS } from '../app/lib/data/resources'
+import { BUILT_IN_RESOURCE_GROUPS } from '../app/lib/resources'
 
 // ── Lexical's saved JSON, written by hand ───────────────────────────────────
 
@@ -72,12 +86,18 @@ export interface SitePageSeed {
   title: string
   subtitle: string
   description: string
+  /** Lists its sections under the title ("On this page") */
+  showToc?: boolean
   sections: { id: string; title: string; subtitle: string; anchor: string; body: string }[]
 }
 
 const section = (title: string, subtitle: string, body: string, anchor = '') => ({ id: randomUUID(), title, subtitle, anchor, body })
 
 // ── The pages ────────────────────────────────────────────────────────────────
+
+/** About's core values: a Core values block, under the #values link */
+export const CORE_VALUES_SECTION = () =>
+  section('Our core values', 'What guides everything CSEG does, and spells where we do it.', doc({ type: 'core-values', version: 1 }), 'values')
 
 const about: SitePageSeed = {
   slug: 'about',
@@ -95,6 +115,8 @@ const about: SitePageSeed = {
         ])
       )
     ),
+    // The Core values block draws them from the site's own list, as the code's page does
+    CORE_VALUES_SECTION(),
     section(
       'What we focus on',
       'How CSEG helps Panthers from day one to graduation.',
@@ -163,6 +185,11 @@ const SOCIAL: Record<keyof typeof SOCIAL_LINKS, { label: string; detail: string 
   instagram: { label: 'Instagram', detail: '@cseg_gsu' },
   x: { label: 'X (Twitter)', detail: '@cseg_gsu' },
   pin: { label: 'PIN', detail: 'Panther Involvement Network' },
+  groupme: { label: 'GroupMe', detail: 'Chat with members' },
+  linktree: { label: 'Linktree', detail: 'Every CSEG link' },
+  discord: { label: 'Discord', detail: 'Chat with members' },
+  linkedin: { label: 'LinkedIn', detail: 'Alumni and news' },
+  youtube: { label: 'YouTube', detail: 'Recordings and recaps' },
 }
 
 const contact: SitePageSeed = {
@@ -186,18 +213,6 @@ const contact: SitePageSeed = {
   ],
 }
 
-/** Each resource group's icon, as a card icon */
-const GROUP_ICON = new Map<LucideIcon, string>([
-  [BookOpen, 'book'],
-  [Wallet, 'money'],
-  [HeartPulse, 'health'],
-  [HeartHandshake, 'support'],
-  [Building2, 'building'],
-  [Users, 'people'],
-  [Sparkles, 'sparkle'],
-  [GraduationCap, 'school'],
-])
-
 const resources: SitePageSeed = {
   slug: 'resources',
   title: 'Student resources',
@@ -205,16 +220,8 @@ const resources: SitePageSeed = {
     'Georgia State offers more support than most students ever use. These are the links we point Panthers to most, from registering for classes to finding free food.',
   description: 'Links to Georgia State services for academics, money, health, housing, and getting involved, plus GSU colleges and student group chats.',
   sections: [
-    // Each group keeps its #link (the header's Resources menu links to them)
-    ...RESOURCE_GROUPS.map((g) =>
-      section(g.title, g.description, doc(cards(g.links.map((l) => ({ title: l.label, text: l.description, href: l.href, icon: GROUP_ICON.get(g.Icon) ?? '' })))), g.id)
-    ),
-    section(
-      'Group chats',
-      'Student-run GroupMe chats. Be kind, and never share personal or financial info with someone you haven’t met.',
-      doc(cards(GROUP_CHATS.map((l) => ({ title: l.label, text: l.description, href: l.href, icon: 'chat' })))),
-      'chats'
-    ),
+    // Each group live from the dashboard's resources, keeping its #link (the header's Resources menu links to them)
+    ...BUILT_IN_RESOURCE_GROUPS.map((g) => section(g.title, g.description ?? '', doc({ type: 'reference', version: 1, items: [{ kind: 'resources', ref: g.slug }] }), g.slug)),
     section('Can’t find what you need?', 'Tell us what you’re looking for and we’ll point you in the right direction.', doc(buttons([{ label: 'Ask the officers', href: '/contact', style: 'outline' }]))),
   ],
 }
@@ -248,13 +255,164 @@ const eat: SitePageSeed = {
       )
     ),
     // Each area keeps its #link from the code's page
-    eaterySection('Dining halls', EAT_AREAS.campus.description ?? '', 'campus', 'dining-halls', 'campus'),
+    eaterySection('Dining halls', findArea(BUILT_IN_AREAS, 'campus')?.description ?? '', 'campus', 'dining-halls', 'campus'),
     eaterySection('On-campus eateries & cafés', '', 'campus', 'others'),
-    ...EAT_AREA_LIST.filter((a) => a !== 'campus').map((a) => eaterySection(EAT_AREAS[a].title, EAT_AREAS[a].description ?? '', a, 'all', a)),
+    ...BUILT_IN_AREAS.filter((a) => a.slug !== 'campus').map((a) => eaterySection(a.title, a.description ?? '', a.slug, 'all', a.slug)),
     section('A little farther', '', doc(paragraph('Also in the Downtown Atlanta directory: ', MORE_EATS.map((m) => `${m.name} (${m.address})`).join(', '), '.'))),
     section('Quick tips', '', doc(bullets(EAT_TIPS.map((t) => [t])))),
     section('Useful links', '', doc(bullets(EAT_LINKS.map((l) => [[l.label, l.href]])))),
   ],
 }
 
-export const SITE_PAGE_SEEDS: readonly SitePageSeed[] = [about, join, contact, resources, eat]
+/** A numbered list; an item with its own list holds it as Lexical does, in an item of its own after it */
+const numbered = (items: readonly ConstitutionItem[]): Block => ({
+  ...element,
+  type: 'list',
+  listType: 'number',
+  start: 1,
+  tag: 'ol',
+  children: items.flatMap((item, i) => {
+    const words = { ...element, type: 'listitem', value: i + 1, children: inline(...withLinks(typeof item === 'string' ? item : item.text)) }
+    return typeof item === 'string' ? [words] : [words, { ...element, type: 'listitem', value: i + 2, children: [numbered(item.items)] }]
+  }),
+})
+const heading = (tag: 'h3', words: string): Block => ({ ...element, type: 'heading', tag, children: [text(words)] })
+const constitutionBlocks = (blocks: readonly ConstitutionBlock[]) => blocks.map((b) => (typeof b === 'string' ? paragraph(...withLinks(b)) : numbered(b.items)))
+
+// Each article a section, with its own sections under headings, then the appendix
+const constitution: SitePageSeed = {
+  slug: 'constitution',
+  title: 'Constitution',
+  subtitle: `The document that sets out how CSEG is organized and run, as registered with Georgia State. This is the ${CONSTITUTION_TERM} constitution.`,
+  description: 'The constitution of the Campus Survival and Engagement Group at Georgia State.',
+  showToc: true,
+  sections: [
+    ...CONSTITUTION_ARTICLES.map((a, i) =>
+      section(
+        articleHeading(i, a),
+        '',
+        doc(...constitutionBlocks(a.blocks ?? []), ...(a.sections ?? []).flatMap((s, j) => [heading('h3', sectionHeading(j, s)), ...constitutionBlocks(s.blocks)])),
+        articleId(i)
+      )
+    ),
+    section(
+      'Glossary',
+      '',
+      doc(
+        bullets(
+          CONSTITUTION_GLOSSARY.map(({ term, definition }) => [`${term}: `, ...withLinks(definition)])
+        )
+      ),
+      GLOSSARY_ID
+    ),
+    section(
+      'Amendments and history',
+      '',
+      doc(bullets(CONSTITUTION_HISTORY.map(({ date, note }) => [`${formatDate(date)}: ${note}`]))),
+      HISTORY_ID
+    ),
+  ],
+}
+
+export const SITE_PAGE_SEEDS: readonly SitePageSeed[] = [about, join, contact, resources, eat, constitution]
+
+// ── Starter pages: new pages of the dashboard's own, not the site's ────────────
+
+type Pick = { title: string; subtitle: string; description: string }
+
+/** The longest a pick's line under its title is kept (RANKING_SUBTITLE_MAX in app/lib/richtext/blocks/ranking.tsx) */
+const PICK_SUBTITLE_MAX = 150
+
+/** A Ranking block: its picks in order, best first */
+const ranking = (items: readonly Pick[]): Block => ({ type: 'ranking', version: 1, items })
+
+/**
+ * A pick from the site's own data, so its words match the rest of the site: an eatery's
+ * name, its address and official hours (hours only where a source gives them), what it is,
+ * and a link to its pin. Hours that don't fit beside the address go with the description.
+ */
+const eateryPick = (id: string, why = ''): Pick => {
+  const e = EATERIES.find((x) => x.id === id)
+  if (!e) throw new Error(`No eatery ${id} in app/lib/data/eats.ts`)
+  const map = eateryMapId(e)
+  const withHours = e.hours ? `${e.address} · ${e.hours}` : e.address
+  const fits = withHours.length <= PICK_SUBTITLE_MAX
+  return {
+    title: e.name,
+    subtitle: fits ? withHours : e.address.slice(0, PICK_SUBTITLE_MAX),
+    description: [why, e.description, !fits && e.hours ? `**Hours:** ${e.hours}` : '', map ? `[Show on map](/map?place=${map})` : ''].filter(Boolean).join(' '),
+  }
+}
+
+/** A place on the campus map, as a pick */
+const placePick = (id: string, why = ''): Pick => {
+  const p = getPlace(id)
+  if (!p) throw new Error(`No place ${id} in app/lib/data/places.ts`)
+  return { title: p.name, subtitle: p.address ?? '', description: [why, p.description, `[Show on map](/map?place=${p.id})`].filter(Boolean).join(' ') }
+}
+
+/**
+ * Panther Picks, at /pages/panther-picks: the club's top lists, each a Ranking. The picks
+ * and their words come from the site's data; the order is a starting point for officers
+ * to settle before it's published.
+ */
+const pantherPicks: SitePageSeed = {
+  slug: 'panther-picks',
+  title: 'Panther Picks',
+  subtitle: 'CSEG’s top lists for getting through the semester: where to eat late, where to get coffee, and where to study.',
+  description: 'CSEG’s ranked picks for late-night food, coffee, and study spots around Georgia State’s downtown campus.',
+  sections: [
+    section(
+      'Before you go',
+      '',
+      doc(
+        callout('info', 'These are our picks, not an official list. Hours change by semester and break, so check before you head out. ', ['Every place to eat', '/eat'], ' has more.')
+      )
+    ),
+    section(
+      'Late-night eats',
+      'For when the library closes and you’re still hungry.',
+      doc(
+        ranking([
+          eateryPick('piedmont-central-dining', 'The only all-night option on campus, on weeknights.'),
+          eateryPick('shahs-halal', 'Open until 2 a.m. on weekends.'),
+          eateryPick('saxbys', 'Right in the library, open until midnight most weeknights.'),
+          eateryPick('anatolia-cafe', 'Open until 2 a.m. Fridays and Saturdays.'),
+          eateryPick('hungry-af'),
+          eateryPick('stoners-pizza'),
+        ])
+      ),
+      'late-night'
+    ),
+    section(
+      'Coffee on and near campus',
+      'Between classes, or before an 8 a.m.',
+      doc(
+        ranking([
+          eateryPick('saxbys', 'Inside the library, so it’s on the way to studying.'),
+          eateryPick('costa-coffee', 'Four self-serve spots in campus buildings.'),
+          eateryPick('highland-bakery', 'Right on Woodruff Park.'),
+          eateryPick('hansel-and-gretel'),
+          eateryPick('land-of-a-thousand-hills'),
+          eateryPick('legal-grounds'),
+        ])
+      ),
+      'coffee'
+    ),
+    section(
+      'Places to study',
+      'Where to settle in for a few hours.',
+      doc(
+        ranking([
+          placePick('library-north', 'The default for a reason: space, computers, printing, and coffee downstairs.'),
+          placePick('library-south'),
+          placePick('curve', 'For group projects with data or maps.'),
+        ])
+      ),
+      'study'
+    ),
+  ],
+}
+
+/** New pages to start the dashboard with; they show at /pages/<slug> once published */
+export const STARTER_PAGE_SEEDS: readonly SitePageSeed[] = [pantherPicks]

@@ -5,6 +5,7 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { DRAG_DROP_PASTE } from '@lexical/rich-text'
 import { $insertNodeToNearestRoot, mergeRegister } from '@lexical/utils'
 import {
+  $insertNodes,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
   createCommand,
@@ -13,7 +14,7 @@ import {
   type LexicalNode,
 } from 'lexical'
 import { Icon } from 'lucide-react'
-import { useEffect, useState, type FC } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type FC, type ReactNode } from 'react'
 
 import { CALLOUT_TONES, type CalloutTone, type ImageData } from '@/lib/richtext/blocks'
 
@@ -31,7 +32,7 @@ import { $isFaqItemNode, $newFaq, FaqAnswerNode, FaqItemNode, FaqNode, FaqQuesti
 export { $createCalloutNode, $isCalloutNode, CalloutNode } from './CalloutNode'
 export { $isButtonsNode, ButtonsNode } from './ButtonsNode'
 export { $isImageNode, ImageNode } from './ImageNode'
-export { $addFaqItemAfter, $faqAtSelection, $removeFaq, $removeFaqItem, migrateFaqJSON } from './FaqNodes'
+export { $addFaqItemAfter, $faqAtSelection, $isFaqQuestionNode, $removeFaq, $removeFaqItem, migrateFaqJSON } from './FaqNodes'
 
 /** A callout tone's icon, for the tools that pick one */
 export const CalloutIcon: FC<{ tone: CalloutTone }> = ({ tone }) => <Icon iconNode={CALLOUT_TONES[tone].icon} aria-hidden />
@@ -96,7 +97,10 @@ export const BlocksExtension = defineExtension({
       editor.registerCommand(
         INSERT_DATA_BLOCK_COMMAND,
         ({ type, data }) => {
-          $insertBlock(DATA_BLOCKS[type].$create(data as never))
+          const node = DATA_BLOCKS[type].$create(data as never)
+          // An inline item goes in at the cursor, in the sentence
+          if ((DATA_BLOCKS[type].spec as { inline?: boolean }).inline) $insertNodes([node])
+          else $insertBlock(node)
           return true
         },
         COMMAND_PRIORITY_EDITOR
@@ -143,20 +147,37 @@ export const ImageUploads: FC = () => {
 /** The blocks the Insert tools put in through a dialog (an FAQ goes straight in, with insertFaq) */
 export type InsertableBlock = 'image' | 'buttons' | DataBlockType
 
+const BlockDialogsContext = createContext<{ open: (block: InsertableBlock) => void; openImage: () => void; openButtons: () => void; insertFaq: () => void } | null>(null)
+
+/** The insert tools' way into BlockDialogs: call open with the block */
+export const useBlockDialogs = () => useContext(BlockDialogsContext)!
+
 /**
- * The insert tools' dialogs (image, buttons, steps, cards, video), for the toolbar
- * and the ribbon: call open with the block, and put `dialogs` anywhere in what's drawn
- * (they open at the end of the page).
+ * The insert tools' dialogs (image, buttons, steps, cards, video), once for the whole
+ * editor, for the toolbar, the ribbon, and the slash menu (they open at the end of the page).
  */
-export function useBlockDialogs() {
+export const BlockDialogs: FC<{ children: ReactNode }> = ({ children }) => {
   const [editor] = useLexicalComposerContext()
   const [open, setOpen] = useState<InsertableBlock | null>(null)
+  const tools = useMemo(
+    () => ({
+      open: setOpen,
+      openImage: () => setOpen('image'),
+      openButtons: () => setOpen('buttons'),
+      insertFaq: () => {
+        editor.dispatchCommand(INSERT_FAQ_COMMAND, undefined)
+        editor.focus()
+      },
+    }),
+    [editor]
+  )
   const close = () => {
     setOpen(null)
     editor.focus()
   }
-  const dialogs = (
-    <>
+  return (
+    <BlockDialogsContext.Provider value={tools}>
+      {children}
       <ImageDialog
         open={open === 'image'}
         onClose={close}
@@ -190,11 +211,6 @@ export function useBlockDialogs() {
           />
         )
       })}
-    </>
+    </BlockDialogsContext.Provider>
   )
-  const insertFaq = () => {
-    editor.dispatchCommand(INSERT_FAQ_COMMAND, undefined)
-    editor.focus()
-  }
-  return { open: setOpen, openImage: () => setOpen('image'), openButtons: () => setOpen('buttons'), insertFaq, dialogs }
 }

@@ -13,6 +13,8 @@ export interface ActionItem {
   href?: string
   /** Shown at the end, as keycaps (see Kbd): ["mod", "D"]. It only labels; wire the shortcut up yourself. */
   shortcut?: string | string[]
+  /** Makes it an on/off item: it shows a check, and the menu stays open to change several */
+  checked?: boolean
   /** For deleting and other actions that can't be undone */
   danger?: boolean
   disabled?: boolean

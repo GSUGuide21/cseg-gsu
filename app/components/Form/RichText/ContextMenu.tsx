@@ -18,12 +18,13 @@ import type { FC, ReactNode } from 'react'
 
 import type { ActionItem, ActionMenuEntry } from '../../ActionMenu/types'
 import { ContextMenu } from '../../ContextMenu'
-import { $clearFormatting, $hasHeaderRow, $toggleHeaderRow, TABLE_ACTIONS } from './commands'
+import { $clearFormatting, $hasHeaderRow, $selectedBlock, $toggleHeaderRow, BLOCK_ACTIONS, TABLE_ACTIONS } from './commands'
 import { useClipboard } from './tools'
 
 /**
  * The editor's right-click menu (and the Menu key's, or Shift+F10's): cut, copy, and paste,
- * text marks and clearing them, the table tools inside a table, and select all.
+ * text marks and clearing them, moving the block, the table tools inside a table, and
+ * select all.
  *
  * The clipboard items are useClipboard's (shared with the ribbon).
  */
@@ -38,10 +39,30 @@ export const RichTextContextMenu: FC<{ readOnly: boolean; children: ReactNode; c
   }
 
   const items = (): ActionMenuEntry[] => {
-    const { hasText, inTable, headerRow } = editor.getEditorState().read(() => {
+    const { hasText, inTable, headerRow, blockItems } = editor.getEditorState().read(() => {
       const selection = $getSelection()
       const range = $isRangeSelection(selection) ? selection : null
-      return { hasText: !!range && !range.isCollapsed(), inTable: !!range && $getTableCellNodeFromLexicalNode(range.anchor.getNode()) !== null, headerRow: $hasHeaderRow() }
+      const block = $selectedBlock()
+      return {
+        hasText: !!range && !range.isCollapsed(),
+        inTable: !!range && $getTableCellNodeFromLexicalNode(range.anchor.getNode()) !== null,
+        headerRow: $hasHeaderRow(),
+        blockItems: block
+          ? BLOCK_ACTIONS.map(
+              (a): ActionItem => ({
+                label: a.label,
+                danger: a.danger,
+                shortcut: a.keys.length ? a.keys : undefined,
+                disabled: a.$can ? !a.$can(block) : false,
+                onSelect: () =>
+                  run(() => {
+                    const at = $selectedBlock()
+                    if (at) a.$run(at)
+                  }),
+              })
+            )
+          : [],
+      }
     })
     const tableItems: ActionItem[] = TABLE_ACTIONS.flatMap((a, i) => [
       { label: a.label, danger: a.danger, onSelect: () => run(a.$run) },
@@ -71,6 +92,7 @@ export const RichTextContextMenu: FC<{ readOnly: boolean; children: ReactNode; c
       { label: 'Underline', icon: <Underline />, shortcut: ['mod', 'U'], onSelect: () => format('underline') },
       { label: 'Strikethrough', icon: <Strikethrough />, onSelect: () => format('strikethrough') },
       { label: 'Clear formatting', icon: <RemoveFormatting />, description: 'Marks, font, size, and colors', onSelect: () => run($clearFormatting) },
+      ...(blockItems.length ? [{ label: 'Block', items: blockItems }] : []),
       ...(inTable ? [{ label: 'Table', items: tableItems }] : []),
       'separator',
       { label: 'Select all', icon: <TextSelect />, shortcut: ['mod', 'A'], onSelect: () => run($selectAll) },

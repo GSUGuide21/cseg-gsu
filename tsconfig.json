@@ -16,7 +16,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
     "incremental": true,
     "types": [
       "node",
@@ -34,31 +33,31 @@
         "./app/*"
       ],
       "@app/*": [
-        "app-old-2/*"
+        "./app-old-2/*"
       ],
       "@assets/*": [
         "./public/assets/*"
       ],
       "@contexts/*": [
-        "app-old-2/contexts/*"
+        "./app-old-2/contexts/*"
       ],
       "@components/*": [
-        "app-old-2/components/*"
+        "./app-old-2/components/*"
       ],
       "@jeopardy/*": [
-        "app-old-2/(jeopardy)/*"
+        "./app-old-2/(jeopardy)/*"
       ],
       "@main/*": [
-        "app-old-2/(main)/*"
+        "./app-old-2/(main)/*"
       ],
       "@hooks/*": [
-        "app/hooks/*"
+        "./app/hooks/*"
       ],
       "@lib/*": [
-        "app/lib/*"
+        "./app/lib/*"
       ],
       "@ui/*": [
-        "app-old-2/components/ui/*"
+        "./app-old-2/components/ui/*"
       ]
     }
   },

@@ -1,5 +1,6 @@
 'use client'
 
+import { Square, Underline } from 'lucide-react'
 import { useState, type FC, type ReactNode } from 'react'
 
 import { cn } from '@/lib/cn'
@@ -9,6 +10,7 @@ import { Popover } from '../../Popover'
 import { ColorPanel } from '../ColorPicker'
 import { parseColorWithAlpha } from '../ColorPicker/color'
 import type { Swatch } from '../ColorPicker/types'
+import { SegmentedControl } from '../Segmented'
 
 /** Text, underline, and border colors: mid tones that read on light and dark pages alike */
 export const INK_SWATCHES: Swatch[] = [
@@ -73,7 +75,12 @@ export const ColorTool: FC<{
   disabled?: boolean
   /** Shows the label beside the icon (the ribbon's Format tab) */
   labeled?: boolean
-}> = ({ label, icon, current, swatches, alpha = false, start, onPick, disabled, labeled = false }) => {
+  /** More choices, under the color */
+  children?: ReactNode
+  /** What None does and whether there's anything for it to do, when that's more than the color */
+  onClear?: () => void
+  clearable?: boolean
+}> = ({ label, icon, current, swatches, alpha = false, start, onPick, disabled, labeled = false, children, onClear, clearable = !!current }) => {
   const [open, setOpen] = useState(false)
   const name = current ? (nameOf(current, swatches) ?? current) : null
   const done = () => {
@@ -86,6 +93,8 @@ export const ColorTool: FC<{
       open={open}
       onOpenChange={setOpen}
       title={label}
+      // Tall enough to reach the site's fixed header, and on a short screen to need scrolling
+      className="z-60 max-h-[calc(100dvh-1rem)] overflow-y-auto"
       trigger={
         <button
           type="button"
@@ -110,14 +119,16 @@ export const ColorTool: FC<{
     >
       <div className="flex flex-col gap-3">
         <ColorPanel value={current || start} onValueChange={(c) => onPick(c, true)} swatches={swatches} alpha={alpha} />
+        {children}
         <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
           <Button
             size="sm"
             variant="ghost"
-            disabled={!current}
+            disabled={!clearable}
             onClick={() => {
               setOpen(false)
-              onPick(null)
+              if (onClear) onClear()
+              else onPick(null)
             }}
           >
             None
@@ -130,3 +141,55 @@ export const ColorTool: FC<{
     </Popover>
   )
 }
+
+const LINE_TYPES = { solid: 'Single', double: 'Double', dotted: 'Dotted', dashed: 'Dashed', wavy: 'Wavy' }
+const BORDER_TYPES = { solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted', double: 'Double' }
+const BORDER_WIDTHS = { '1px': 'Thin', '1.5px': 'Medium', '3px': 'Thick' }
+
+/** A named row of choices in a line tool, applied as they're picked so the text shows them */
+const LineChoice: FC<{ label: string; options: Record<string, ReactNode>; value: string; onPick: (value: string) => void }> = ({ label, options, value, onPick }) => (
+  <div className="flex flex-col gap-1 border-t border-line pt-3">
+    <span aria-hidden className="text-[0.78rem] font-semibold text-ink">
+      {label}
+    </span>
+    {/* Tighter than usual, so five types fit across the panel */}
+    <SegmentedControl size="sm" fitted className="[&>label]:px-1.5" aria-label={label} value={value || null} onValueChange={onPick} options={Object.entries(options).map(([value, label]) => ({ value, label }))} />
+  </div>
+)
+
+type LineToolProps = {
+  /** The selection's color and type now ("" for none, or mixed) */
+  current: string
+  type: string
+  onPick: (color: string | null, live?: boolean) => void
+  onType: (type: string) => void
+  disabled?: boolean
+  labeled?: boolean
+}
+
+/** An underline's color and type, each type shown as itself */
+export const UnderlineTool: FC<LineToolProps & { onClear: () => void }> = ({ type, onType, ...props }) => (
+  <ColorTool {...props} label="Underline style" icon={<Underline />} start="#0039a6" swatches={INK_SWATCHES} clearable={!!(props.current || type)}>
+    <LineChoice
+      label="Type"
+      value={type || 'solid'}
+      onPick={onType}
+      options={Object.fromEntries(
+        Object.entries(LINE_TYPES).map(([value, label]) => [
+          value,
+          <span key={value} className="underline underline-offset-2" style={{ textDecorationStyle: value as 'solid' }}>
+            {label}
+          </span>,
+        ])
+      )}
+    />
+  </ColorTool>
+)
+
+/** A border's color, type, and size. Picking any of them puts a border on the words. */
+export const BorderTool: FC<LineToolProps & { start: string; width: string; onWidth: (width: string) => void }> = ({ type, onType, width, onWidth, ...props }) => (
+  <ColorTool {...props} label="Border style" icon={<Square />} swatches={INK_SWATCHES}>
+    <LineChoice label="Type" value={type} onPick={onType} options={BORDER_TYPES} />
+    <LineChoice label="Size" value={width} onPick={onWidth} options={BORDER_WIDTHS} />
+  </ColorTool>
+)

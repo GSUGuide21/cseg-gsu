@@ -22,6 +22,16 @@ describe('walk graph', () => {
     expect(detours).toEqual([])
   })
 
+  it('routes to a place the network was built without, from its pin', () => {
+    // A spot added in the dashboard since: Woodruff Park's fountain, by its coordinates
+    const pin = { lat: 33.7553, lng: -84.3881 }
+    expect(router.canRoute('club-new-spot')).toBe(false)
+    const route = router.route(FROM, { point: pin })!
+    expect(route).toBeDefined()
+    expect(route.meters).toBeGreaterThan(50)
+    expect(route.meters / distanceMeters(getPlace('student-center-east')!, pin)).toBeLessThan(2.2)
+  })
+
   it('avoids stairs when asked', () => {
     for (const p of PLACES.slice(0, 40)) {
       const route = router.route(FROM, { placeId: p.id }, { avoidStairs: true })

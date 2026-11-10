@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { Montserrat } from 'next/font/google'
+import { Montserrat, Yellowtail } from 'next/font/google'
 import { CLUB_DESCRIPTION } from './globals/config/site'
 import { THEME_INIT_SCRIPT } from './globals/config/theme'
 import { ThemeColorMeta } from './globals/ThemeColorMeta'
+import { cn } from "@/lib/cn"
 import './globals.css'
+import { SITE_URL } from '@/lib/siteUrl'
 
 const montserrat = Montserrat({
   variable: '--font-montserrat',
@@ -11,7 +13,16 @@ const montserrat = Montserrat({
   display: 'swap',
 })
 
+const yellowtail = Yellowtail({
+  variable: '--font-yellowtail',
+  subsets: ['latin'],
+  display: 'swap',
+  weight: '400',
+})
+
 export const metadata: Metadata = {
+  // What relative link-preview images resolve against
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'Campus Survival and Engagement Group',
     template: '%s | Campus Survival and Engagement Group',
@@ -41,7 +52,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className={`${montserrat.variable} font-sans antialiased`}>
+      <body className={cn(`${montserrat.variable} font-sans antialiased`, yellowtail.variable)}>
         <ThemeColorMeta />
         {children}
       </body>

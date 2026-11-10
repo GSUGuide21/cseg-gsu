@@ -1,23 +1,25 @@
 'use client'
 
-import { MapPin, Pencil, Plus, Trash2, Utensils } from 'lucide-react'
+import { ArrowDownUp, CalendarCheck, Layers, MapPin, Pencil, Plus, Trash2, Utensils } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, type FC } from 'react'
 
 import { ActionMenu, Badge, Button, Dialog, EmptyState, Table, useNotify } from '@/components'
-import { Field, Input, NumberInput, Select, Switch, TagInput, TextArea } from '@/components/Form'
-import { deleteEatery, saveEatery } from '@/lib/dashboard/actions'
+import { DatePicker, Field, Input, NumberInput, Select, Switch, TagInput, TextArea } from '@/components/Form'
+import { deleteEatery, markEateriesChecked, reorderEateries, saveAreas, saveEatery } from '@/lib/dashboard/actions'
 import { coordsFrom } from '@/lib/dashboard/validate'
 import { PLACES } from '@/lib/data/places'
-import { EAT_AREA_LIST, EAT_AREAS, isEatArea } from '@/lib/eateries'
-import type { EateryRow, HoursRangeJson } from '@/lib/supabase/types'
+import { atlantaToday, shortDate } from '@/lib/eateries'
+import type { EateryAreaRow, EateryClosureRow, EateryRow, HoursRangeJson } from '@/lib/supabase/types'
 
+import { PinPicker } from '../PinMap'
 import { PageTitle, useAction } from '../ui'
+import { ArrangeDialog } from '../ArrangeDialog'
+import { GroupsDialog } from '../GroupsDialog'
+import { ClosuresPanel } from './ClosuresPanel'
 import { HoursEditor } from './HoursEditor'
 
-const AREA_OPTIONS = EAT_AREA_LIST.map((value) => ({ value, label: EAT_AREAS[value].title }))
 const PLACE_OPTIONS = [...PLACES].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: p.id, label: p.name }))
-const areaTitle = (area: string) => (isEatArea(area) ? EAT_AREAS[area].title : area)
 
 type Location = { key: number; id?: string; label: string; lat: number | null; lng: number | null; schedule: HoursRangeJson[] | null }
 
@@ -65,7 +67,7 @@ const LocationsEditor: FC<{ initial: EateryRow['locations']; error?: string }> =
   )
 }
 
-const EateryDialog: FC<{ eatery: EateryRow | null; nextSort: number; open: boolean; onClose: () => void }> = ({ eatery, nextSort, open, onClose }) => {
+const EateryDialog: FC<{ eatery: EateryRow | null; areas: EateryAreaRow[]; nextSort: number; open: boolean; onClose: () => void }> = ({ eatery, areas, nextSort, open, onClose }) => {
   const router = useRouter()
   const { pending, errors, run } = useAction()
   const [lat, setLat] = useState<number | null>(eatery?.lat ?? null)
@@ -106,7 +108,7 @@ const EateryDialog: FC<{ eatery: EateryRow | null; nextSort: number; open: boole
         </Field>
         <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <Field label="Area" required error={errors.area}>
-            <Select name="area" defaultValue={eatery?.area ?? null} options={AREA_OPTIONS} placeholder="Pick an area" />
+            <Select name="area" defaultValue={eatery?.area ?? null} options={areas.map((a) => ({ value: a.slug, label: a.title }))} placeholder="Pick an area" />
           </Field>
           <Switch name="dining_hall" defaultChecked={eatery?.dining_hall ?? false}>
             Dining hall
@@ -145,6 +147,25 @@ const EateryDialog: FC<{ eatery: EateryRow | null; nextSort: number; open: boole
               }}
             />
           </Field>
+          <PinPicker
+            value={lat !== null && lng !== null ? { lat, lng } : null}
+            onChange={(at) => {
+              setLat(at.lat)
+              setLng(at.lng)
+            }}
+          />
+          {lat !== null || lng !== null ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="self-start"
+              onClick={() => {
+                setLat(null)
+                setLng(null)
+              }}>
+              Remove the pin (use “Inside” instead)
+            </Button>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Latitude" error={errors.lat}>
               <NumberInput name="lat" value={lat} onValueChange={setLat} step={0.0001} stepper={false} />
@@ -160,24 +181,29 @@ const EateryDialog: FC<{ eatery: EateryRow | null; nextSort: number; open: boole
 
         <LocationsEditor initial={eatery?.locations ?? []} error={errors.locations} />
 
+        <Field label="Last checked" description="When someone last confirmed it’s open, and its hours, against an official source.">
+          <DatePicker name="checked_on" size="sm" defaultValue={eatery ? eatery.checked_on : atlantaToday()} max={atlantaToday()} />
+        </Field>
         <Field label="Official site" error={errors.url}>
           <Input name="url" inputMode="url" defaultValue={eatery?.url ?? ''} placeholder="https://…" />
         </Field>
         <Field label="Search words" description="What people might search the map for: tacos, coffee, late night.">
           <TagInput name="aliases" defaultValue={eatery?.aliases ?? []} transform={(t) => t.toLowerCase()} />
         </Field>
-        <div className="grid gap-4 sm:grid-cols-[10rem_1fr] sm:items-end">
-          <Field label="Order" description="Lower comes first in its area.">
-            <NumberInput name="sort" defaultValue={eatery?.sort ?? nextSort} step={1} />
-          </Field>
-          <Switch name="published" defaultChecked={eatery?.published ?? true} description="Hidden ones stay here for later.">
-            Show on the site and map
-          </Switch>
-        </div>
+        {/* Its place in its area; a new one goes last. Arrange changes it. */}
+        <input type="hidden" name="sort" value={eatery?.sort ?? nextSort} />
+        <Switch name="published" defaultChecked={eatery?.published ?? true} description="Hidden ones stay here for later.">
+          Show on the site and map
+        </Switch>
       </form>
     </Dialog>
   )
 }
+
+/** Older than this, a check is due (about a semester) */
+const STALE_DAYS = 120
+const isStale = (checkedOn: string) => (Date.parse(atlantaToday()) - Date.parse(checkedOn)) / 86_400_000 > STALE_DAYS
+const checkedLabel = (checkedOn: string) => `${shortDate(checkedOn)}, ${checkedOn.slice(0, 4)}`
 
 const pinOf = (e: EateryRow) =>
   e.locations.length
@@ -188,27 +214,43 @@ const pinOf = (e: EateryRow) =>
         ? `In ${PLACES.find((p) => p.id === e.place_id)?.name ?? e.place_id}`
         : 'No pin'
 
-export const EateriesView: FC<{ eateries: EateryRow[] }> = ({ eateries }) => {
+export const EateriesView: FC<{ eateries: EateryRow[]; areas: EateryAreaRow[]; closures: EateryClosureRow[] }> = ({ eateries, areas, closures }) => {
   const router = useRouter()
   const { confirm, toast } = useNotify()
   const [editing, setEditing] = useState<EateryRow | 'new' | null>(null)
   const [dialogKey, setDialogKey] = useState(0)
+  const [tool, setTool] = useState<'areas' | 'arrange' | null>(null)
   const open = (e: EateryRow | 'new') => {
     setDialogKey((k) => k + 1)
     setEditing(e)
   }
   // In the page's order: by area as the page lists them, then each area's order
-  const rows = useMemo(() => [...eateries].sort((a, b) => EAT_AREA_LIST.indexOf(a.area as never) - EAT_AREA_LIST.indexOf(b.area as never) || a.sort - b.sort), [eateries])
+  const rows = useMemo(() => {
+    const at = (slug: string) => areas.findIndex((a) => a.slug === slug)
+    return [...eateries].sort((a, b) => at(a.area) - at(b.area) || a.sort - b.sort)
+  }, [eateries, areas])
+  const areaTitle = (slug: string) => areas.find((a) => a.slug === slug)?.title ?? slug
+  const counts = Object.fromEntries(areas.map((a) => [a.slug, eateries.filter((e) => e.area === a.slug).length]))
+  // Each eatery's closure today, if one covers it
+  const today = atlantaToday()
+  const closedNow = (slug: string) => closures.find((c) => c.starts_on <= today && today <= c.ends_on && c.eateries.includes(slug))
   const nextSort = Math.max(0, ...eateries.map((e) => e.sort)) + 10
   return (
     <>
       <PageTitle
+        icon={<Utensils />}
         title="Eateries"
-        description="Places to eat: the Places to Eat page’s lists, Eateries blocks on other pages, and the map’s Food pins, with “Open now” from the hours set here."
+        description="Places to eat: the Places to Eat page’s lists, References on other pages, and the map’s Food pins, with “Open now” from the hours set here."
         actions={
           <>
             <Button href="/eat" size="sm" variant="outline" external>
               Open Places to Eat
+            </Button>
+            <Button size="sm" variant="outline" leading={<Layers size={15} aria-hidden />} onClick={() => setTool('areas')}>
+              Areas
+            </Button>
+            <Button size="sm" variant="outline" leading={<ArrowDownUp size={15} aria-hidden />} disabled={!eateries.length} onClick={() => setTool('arrange')}>
+              Arrange
             </Button>
             <Button size="sm" leading={<Plus size={15} aria-hidden />} onClick={() => open('new')}>
               Add an eatery
@@ -241,8 +283,13 @@ export const EateriesView: FC<{ eateries: EateryRow[] }> = ({ eateries }) => {
             key: 'schedule',
             header: 'Open now',
             hideWhenStacked: true,
-            cell: (e) =>
-              e.status ? (
+            cell: (e) => {
+              const closure = closedNow(e.slug)
+              return closure ? (
+                <Badge size="sm" tone="warning">
+                  Closed for {closure.label} through {shortDate(closure.ends_on)}
+                </Badge>
+              ) : e.status ? (
                 <Badge size="sm" tone="warning">
                   {e.status}
                 </Badge>
@@ -250,9 +297,28 @@ export const EateriesView: FC<{ eateries: EateryRow[] }> = ({ eateries }) => {
                 'Hours set'
               ) : (
                 <span className="text-muted">No hours</span>
-              ),
+              )
+            },
           },
           { key: 'lat', header: 'Map', hideWhenStacked: true, cell: pinOf },
+          {
+            key: 'checked_on',
+            header: 'Checked',
+            sortable: true,
+            hideWhenStacked: true,
+            cell: (e) =>
+              !e.checked_on ? (
+                <Badge size="sm" tone="warning">
+                  Never
+                </Badge>
+              ) : isStale(e.checked_on) ? (
+                <Badge size="sm" tone="warning">
+                  {checkedLabel(e.checked_on)}
+                </Badge>
+              ) : (
+                checkedLabel(e.checked_on)
+              ),
+          },
           {
             key: 'published',
             header: 'On the site',
@@ -269,6 +335,15 @@ export const EateriesView: FC<{ eateries: EateryRow[] }> = ({ eateries }) => {
             label={`Actions for ${e.name}`}
             items={[
               { label: 'Edit', icon: <Pencil />, onSelect: () => open(e) },
+              {
+                label: 'Mark checked today',
+                icon: <CalendarCheck />,
+                onSelect: async () => {
+                  const result = await markEateriesChecked([e.id])
+                  if (!result.ok) return toast({ variant: 'error', title: 'Couldn’t save', message: result.error })
+                  router.refresh()
+                },
+              },
               ...(e.published ? [{ label: 'View on the map', icon: <MapPin />, href: `/map?place=${e.lat !== null ? e.slug : (e.locations[0]?.id ?? e.place_id ?? e.slug)}` }] : []),
               'separator',
               {
@@ -286,7 +361,32 @@ export const EateriesView: FC<{ eateries: EateryRow[] }> = ({ eateries }) => {
           />
         )}
       />
-      <EateryDialog key={dialogKey} eatery={editing === 'new' ? null : editing} nextSort={nextSort} open={editing !== null} onClose={() => setEditing(null)} />
+      <EateryDialog key={dialogKey} eatery={editing === 'new' ? null : editing} areas={areas} nextSort={nextSort} open={editing !== null} onClose={() => setEditing(null)} />
+      <ClosuresPanel closures={closures} eateries={rows} areas={areas} />
+      {/* Opened fresh each time, from what's saved now */}
+      {tool === 'areas' ? (
+        <GroupsDialog
+          title="Areas"
+          description="How Places to Eat groups its eateries, in the page’s order. Drag the grips to reorder. An area with eateries can’t be removed until they move."
+          noun="area"
+          items={['eatery', 'eateries']}
+          groups={areas}
+          counts={counts}
+          save={saveAreas}
+          onClose={() => setTool(null)}
+        />
+      ) : null}
+      {tool === 'arrange' ? (
+        <ArrangeDialog
+          title="Arrange eateries"
+          groupLabel="Area"
+          groups={areas}
+          items={eateries.map((e) => ({ id: e.id, name: e.name, group: e.area, sort: e.sort, badges: [...(e.dining_hall ? ['Dining hall'] : []), ...(e.published ? [] : ['Hidden'])] }))}
+          note="Dining halls show first in their area on Places to Eat, whatever their place here."
+          save={reorderEateries}
+          onClose={() => setTool(null)}
+        />
+      ) : null}
     </>
   )
 }

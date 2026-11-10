@@ -7,5 +7,5 @@ export const metadata = { title: 'Eateries' }
 
 export default async function DashboardEateriesPage() {
   await requireOfficer()
-  return <EateriesView eateries={await listEateries()} />
+  return <EateriesView {...await listEateries()} />
 }

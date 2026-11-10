@@ -33,6 +33,8 @@ export interface DataBlockSpec<T extends Record<string, unknown>> {
   type: string
   /** Its name in the editor: "FAQ", "Steps" */
   label: string
+  /** It sits in a line of text, between words, rather than being a block of its own */
+  inline?: boolean
   /** Each saved field, and how a saved value is read (and cleaned) */
   fields: { [K in keyof T]: (value: unknown) => T[K] }
   /** Whether there's anything to show */
@@ -42,7 +44,7 @@ export interface DataBlockSpec<T extends Record<string, unknown>> {
   Dialog: FC<BlockDialogProps<T>>
   /** Readable HTML for the export; the data goes alongside, so it reads back in */
   toDOM: (data: T, doc: Document) => HTMLElement
-  /** Its words, for the plain text */
+  /** Its words, for the plain text. A block's are a line of their own; an inline item's run on in the sentence. */
   text: (data: T) => string
 }
 
@@ -52,10 +54,12 @@ function DataBlockView<T extends Record<string, unknown>>({ spec, nodeKey, data,
   const edit = useCallback(() => setEditing(true), [])
   const { View, Dialog } = spec
   return (
-    <BlockFrame nodeKey={nodeKey} label={spec.label} onEdit={edit}>
-      <div className="py-px">
-        {spec.has(data) ? <View data={data} /> : <div className="my-4 rounded-lg border border-dashed border-line px-4 py-3 text-[0.85rem] text-muted">Empty {spec.label}</div>}
-      </div>
+    <BlockFrame nodeKey={nodeKey} label={spec.label} onEdit={edit} inline={spec.inline}>
+      {spec.inline ? (
+        spec.has(data) ? <View data={data} /> : <span className="rounded border border-dashed border-line px-1 text-muted">Empty {spec.label}</span>
+      ) : (
+        <div className="py-px">{spec.has(data) ? <View data={data} /> : <div className="my-4 rounded-lg border border-dashed border-line px-4 py-3 text-[0.85rem] text-muted">Empty {spec.label}</div>}</div>
+      )}
       <Dialog
         open={editing}
         initial={data}
@@ -80,10 +84,11 @@ function DataBlockView<T extends Record<string, unknown>>({ spec, nodeKey, data,
  * Makes the Lexical node for a data block: its fields saved flat beside "type" (as
  * { type: 'faq', items: [...] }), drawn with React in a BlockFrame (click to select, Edit
  * opens its dialog), exported as readable HTML with the data in data-props, and read back
- * from that HTML when pasted.
+ * from that HTML when pasted. With `inline`, all of that in a line of text, in spans.
  */
 export function defineDataBlock<T extends Record<string, unknown>>(spec: DataBlockSpec<T>) {
   const keys = Object.keys(spec.fields) as (keyof T & string)[]
+  const tag = spec.inline ? 'span' : 'div'
   const states = Object.fromEntries(keys.map((k) => [k, createState(k, { parse: spec.fields[k] })])) as unknown as Record<keyof T & string, StateConfig<string, unknown>>
 
   /** Any value as this block's data, each field read as saved values are */
@@ -95,7 +100,7 @@ export function defineDataBlock<T extends Record<string, unknown>>(spec: DataBlo
         extends: DecoratorNode,
         stateConfigs: keys.map((k) => ({ flat: true, stateConfig: states[k] })),
         importDOM: {
-          div: (el: HTMLElement) => (el.getAttribute('data-block') === spec.type ? { conversion: $convert, priority: 2 as const } : null),
+          [tag]: (el: HTMLElement) => (el.getAttribute('data-block') === spec.type ? { conversion: $convert, priority: 2 as const } : null),
         },
       })
     }
@@ -112,7 +117,7 @@ export function defineDataBlock<T extends Record<string, unknown>>(spec: DataBlo
     }
 
     createDOM(): HTMLElement {
-      return $getDocument().createElement('div')
+      return $getDocument().createElement(tag)
     }
 
     updateDOM(): false {
@@ -122,19 +127,19 @@ export function defineDataBlock<T extends Record<string, unknown>>(spec: DataBlo
     exportDOM(): DOMExportOutput {
       const data = this.getData()
       const doc = $getDocument()
-      const div = doc.createElement('div')
-      div.setAttribute('data-block', spec.type)
-      div.setAttribute('data-props', JSON.stringify(data))
-      div.append(spec.toDOM(data, doc))
-      return { element: div }
+      const element = doc.createElement(tag)
+      element.setAttribute('data-block', spec.type)
+      element.setAttribute('data-props', JSON.stringify(data))
+      element.append(spec.toDOM(data, doc))
+      return { element }
     }
 
     getTextContent(): string {
-      return `${spec.text(this.getData())}\n`
+      return spec.inline ? spec.text(this.getData()) : `${spec.text(this.getData())}\n`
     }
 
-    isInline(): false {
-      return false
+    isInline(): boolean {
+      return !!spec.inline
     }
 
     decorate(): ReactNode {

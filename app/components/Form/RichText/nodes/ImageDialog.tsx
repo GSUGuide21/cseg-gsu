@@ -15,8 +15,9 @@ import { Field } from '../../Field'
 import { Input } from '../../Input'
 import { uploadMessage, useRichTextOptions } from '../context'
 
-const ImageForm: FC<{ initial?: ImageData; onClose: () => void; onSave: (image: ImageData) => void }> = ({ initial, onClose, onSave }) => {
-  const { uploadImage } = useRichTextOptions()
+const ImageForm: FC<{ initial?: ImageData; inline?: boolean; onClose: () => void; onSave: (image: ImageData) => void }> = ({ initial, inline = false, onClose, onSave }) => {
+  const { uploadImage, imagePicker: ImagePicker } = useRichTextOptions()
+  const [picking, setPicking] = useState(false)
   const [src, setSrc] = useState(initial?.src ?? '')
   const [alt, setAlt] = useState(initial?.alt ?? '')
   const [caption, setCaption] = useState(initial?.caption ?? '')
@@ -52,7 +53,8 @@ const ImageForm: FC<{ initial?: ImageData; onClose: () => void; onSave: (image: 
     <Dialog
       open
       onClose={onClose}
-      title={initial ? 'Edit image' : 'Insert an image'}
+      title={initial ? 'Edit image' : inline ? 'Insert an inline image' : 'Insert an image'}
+      description={inline ? 'Sits in the line of text, as tall as the line: best for a logo or an icon.' : undefined}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -115,6 +117,11 @@ const ImageForm: FC<{ initial?: ImageData; onClose: () => void; onSave: (image: 
                 e.target.value = ''
               }}
             />
+            {ImagePicker ? (
+              <Button variant="outline" size="sm" onClick={() => setPicking(true)}>
+                Choose from the library
+              </Button>
+            ) : null}
             <span className="text-[0.8rem] text-muted">JPG, PNG, GIF, or WebP</span>
           </div>
         ) : null}
@@ -142,12 +149,25 @@ const ImageForm: FC<{ initial?: ImageData; onClose: () => void; onSave: (image: 
         <Field label="Description" description="What’s in it, for people who can’t see it. Leave it empty if the image is only decoration.">
           <Input size="sm" value={alt} maxLength={IMAGE_ALT_MAX} onChange={(e) => setAlt(e.target.value)} placeholder="Officers at the spring welcome table" />
         </Field>
-        <Field label="Caption" description="Optional. Shown under the image.">
-          <Input size="sm" value={caption} maxLength={IMAGE_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} />
-        </Field>
+        {inline ? null : (
+          <Field label="Caption" description="Optional. Shown under the image.">
+            <Input size="sm" value={caption} maxLength={IMAGE_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} />
+          </Field>
+        )}
         {/* Enter in a field saves, as the button does */}
         <button type="submit" hidden />
       </form>
+      {ImagePicker ? (
+        <ImagePicker
+          open={picking}
+          onClose={() => setPicking(false)}
+          onPick={(picked) => {
+            setSrc(picked)
+            setBroken(false)
+            setError('')
+          }}
+        />
+      ) : null}
     </Dialog>
   )
 }
@@ -157,7 +177,7 @@ const ImageForm: FC<{ initial?: ImageData; onClose: () => void; onSave: (image: 
  * `uploadImage`) or by its address, with a description and a caption. It opens at the end
  * of the page, outside the editor, so typing in it can't reach the text.
  */
-export const ImageDialog: FC<{ open: boolean; initial?: ImageData; onClose: () => void; onSave: (image: ImageData) => void }> = ({ open, ...props }) =>
+export const ImageDialog: FC<{ open: boolean; initial?: ImageData; inline?: boolean; onClose: () => void; onSave: (image: ImageData) => void }> = ({ open, ...props }) =>
   open ? (
     <Portal>
       <ImageForm {...props} />

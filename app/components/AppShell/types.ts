@@ -14,6 +14,8 @@ export interface NavSection {
   /** A heading over the section's links */
   label?: string
   items: NavItem[]
+  /** Keeps these links at the bottom of the sidebar, always in view */
+  pinned?: boolean
 }
 
 export interface AppShellProps {
@@ -29,6 +31,8 @@ export interface AppShellProps {
   children: ReactNode
   /** Start with the sidebar narrowed to icons (wide screens) */
   defaultCollapsed?: boolean
+  /** Where this browser remembers whether the sidebar is narrowed. Leave out to not remember. */
+  persistKey?: string
   /** Names the navigation. Default "Dashboard". */
   'aria-label'?: string
   className?: string

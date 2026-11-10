@@ -40,7 +40,7 @@ export type Place = {
   readonly aliases?: readonly string[]
   /** Opening hours, where an official source gives them ("Open now") */
   readonly schedule?: Schedule
-  /** Room directory by floor, shown in the popup and matched by search */
+  /** Room directory by floor, shown in the place panel and matched by search */
   readonly floors?: readonly Floor[]
 }
 
@@ -61,7 +61,8 @@ export const PLACE_CATEGORIES: Record<PlaceCategory, { label: string; color: str
 /** Where the map opens: between the student centers and the library. */
 export const CAMPUS_CENTER = { lat: 33.7535, lng: -84.3865, zoom: 16 } as const
 
-const BUILDINGS_AND_SPACES: readonly Place[] = [
+/** The map's own places (all but the food pins): scripts/seed-places.ts copies them to the dashboard */
+export const BUILDINGS_AND_SPACES: readonly Place[] = [
   // Student life
   {
     id: 'student-center-east',
@@ -206,7 +207,7 @@ const BUILDINGS_AND_SPACES: readonly Place[] = [
     lng: -84.38185,
     address: '75 Piedmont Avenue NE',
     description:
-      'The Graduation Office, classroom scheduling, and the PantherDining office, with Twisted Taco (Tex-Mex) and Kenley’s (Suite 152) on the 1st floor. Also home to the Student Health Clinic (Suite 200), the Counseling Center (Suite 200A, with same-day drop-in consultations), Student Victim Assistance (Suite 241), the Ombudsperson (Suite 502), and a Panther Pantry pickup locker (basement).',
+      'The Citizens Trust Building: the Graduation Office, classroom scheduling, and the PantherDining office, with Twisted Taco (Tex-Mex) and Kenley’s (Suite 152) on the 1st floor. Also home to the Student Health Clinic (Suite 200), the Counseling Center (Suite 200A, with same-day drop-in consultations), Student Victim Assistance (Suite 241), the Ombudsperson (Suite 502), and the Panther Pantry (basement).',
     aliases: [
       'graduation',
       'citizens trust',
@@ -866,7 +867,8 @@ const BUILDINGS_AND_SPACES: readonly Place[] = [
 
 /** Restaurants and cafés with their own pin (one per location); dining halls use their building's pin. */
 const foodPins = (eateries: readonly Eatery[]): Place[] => eateries.flatMap((e): Place[] => {
-  const description = [e.description, e.hours].filter(Boolean).join(' ')
+  // A heads-up ("Closed for winter break through Jan 10") comes first
+  const description = [e.status ? `${e.status}.` : '', e.description, e.hours].filter(Boolean).join(' ')
   if (e.locations) {
     return e.locations.map((loc) => ({
       id: loc.id,
@@ -907,7 +909,10 @@ const withDiningHours = (eateries: readonly Eatery[]) => (p: Place): Place => {
  * The map's places with these eateries' pins and dining hours: the campus map draws the
  * dashboard's eateries this way, so their pins and "Open now" follow what officers set.
  */
-export const placesWithEateries = (eateries: readonly Eatery[]): Place[] => [...BUILDINGS_AND_SPACES.map(withDiningHours(eateries)), ...foodPins(eateries)]
+export const placesWithEateries = (eateries: readonly Eatery[], buildings: readonly Place[] = BUILDINGS_AND_SPACES): Place[] => [
+  ...buildings.map(withDiningHours(eateries)),
+  ...foodPins(eateries),
+]
 
 /** The places with the built-in eateries, for everything that can't wait on the dashboard (routes, search) */
 export const PLACES: readonly Place[] = placesWithEateries(EATERIES)

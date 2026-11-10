@@ -24,8 +24,12 @@ export interface TableColumn<T> {
   rowHeader?: boolean
   /** Leave this column out of the stacked layout on narrow screens */
   hideWhenStacked?: boolean
-  /** The column's name when `header` isn't plain text (for the stacked layout and the sort menu) */
+  /** The column's name when `header` isn't plain text (for the stacked layout and the menus) */
   label?: string
+  /** With `columnMenu`, rows can be grouped by this column */
+  groupable?: boolean
+  /** The group a row belongs to, when that's not the row's value at `key` */
+  groupValue?: (row: T) => string | null | undefined
 }
 
 export interface TableProps<T> {
@@ -36,6 +40,17 @@ export interface TableProps<T> {
   caption: ReactNode
   /** Keep the caption for screen readers only, when a heading above already says it */
   hideCaption?: boolean
+  /** Show the caption as a colored bar across the top */
+  titleBar?: boolean
+  /**
+   * A menu on each column's header: sort up or down, sort by several columns, show and hide
+   * columns, and group rows by a `groupable` column. Shift-clicking a header adds to the sort.
+   */
+  columnMenu?: boolean
+  /** Columns to start hidden, by key */
+  defaultHiddenColumns?: string[]
+  /** The `groupable` column to start grouped by, by key */
+  defaultGroupBy?: string
   /** Controlled sort; leave out to let it manage itself */
   sort?: TableSort | null
   defaultSort?: TableSort | null

@@ -273,9 +273,13 @@ describe('Calendar views and ranges', () => {
   })
 
   it('picks a range in two clicks, in either order', () => {
+    // Opens on today's month, so today has to hold still for the days below to be on screen
+    jest.useFakeTimers({ now: new Date(2026, 9, 1) })
     const onRangeChange = jest.fn()
     const { rerender } = render(<Calendar mode="range" range={null} onRangeChange={onRangeChange} months={2} />)
-    // Opens on today's month; this test needs a fixed one
+    jest.useRealTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Tuesday, October 20, 2026' }))
+    expect(onRangeChange).toHaveBeenLastCalledWith({ start: '2026-10-20', end: null })
     rerender(<Calendar mode="range" range={{ start: '2026-10-20', end: null }} onRangeChange={onRangeChange} months={2} />)
     expect(screen.getAllByRole('grid')).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: 'Thursday, October 15, 2026' }))

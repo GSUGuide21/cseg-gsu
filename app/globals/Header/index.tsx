@@ -1,13 +1,12 @@
 'use client'
 
-import { Menu, X } from 'lucide-react'
+import { Menu, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 
 import { isNavActive, NAV_LINKS } from '@/globals/config/nav'
-import { SITE_SHORT_NAME } from '@/globals/config/site'
-import { LogoMark } from '@/globals/Logo'
+import { Wordmark } from '@/globals/Logo'
 import { iconButton } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 import { DesktopNav } from './DesktopNav'
@@ -71,7 +70,7 @@ export const Header = () => {
       />
       <header
         className={cn(
-          'fixed inset-x-0 top-0 z-50 border-b border-transparent pt-[var(--navbar-safe-top)]',
+          'fixed inset-x-0 top-0 z-50 border-b border-transparent pt-(--navbar-safe-top)',
           'bg-surface/88 backdrop-blur-[10px] backdrop-saturate-[1.6] transition-[border-color,box-shadow,background-color] duration-200',
           'data-scrolled:border-line data-scrolled:bg-surface/94 data-scrolled:shadow-[0_6px_20px_rgba(15,23,41,0.05)] dark:data-scrolled:shadow-[0_6px_20px_rgba(0,0,0,0.4)]'
         )}
@@ -81,22 +80,14 @@ export const Header = () => {
           className="relative mx-auto flex min-h-header-bar max-w-7xl items-center gap-3 px-[clamp(1rem,3vw,2.5rem)] lg:gap-8"
           aria-label="Main"
         >
-          <Link
-            href="/"
-            className="flex min-w-0 shrink-0 items-center gap-2.5 text-ink no-underline transition-colors hover:text-brand"
-          >
-            <LogoMark size={44} priority />
-            <span className="flex flex-col leading-tight max-[22rem]:hidden">
-              <span className="text-lg font-extrabold tracking-tight">{SITE_SHORT_NAME}</span>
-              <span className="text-[0.7rem] font-medium text-muted max-sm:hidden">
-                Campus Survival &amp; Engagement
-              </span>
-            </span>
-          </Link>
+          <Wordmark priority className="shrink-0" textClassName="max-[22rem]:hidden" />
           <div className="ml-auto hidden self-stretch lg:flex">
             <DesktopNav links={DESKTOP_LINKS} isActive={activeFor} onMenuChange={setSubnavOpen} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
+            <Link href="/search" aria-label="Search the site" title="Search" className={iconButton({ size: 'md' })}>
+              <Search size={18} aria-hidden />
+            </Link>
             <HeaderThemeToggle />
             <Link
               href="/join"

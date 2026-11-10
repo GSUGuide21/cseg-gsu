@@ -4,21 +4,16 @@ import Link from 'next/link'
 
 import { EateryGrid } from '@/globals/Eateries'
 import { PageBlock, PageHeader } from '@/globals/Page'
-import { ManagedPage } from '@/globals/Page/ManagedPage'
+import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
 import { button, card, eyebrow, iconTile, inlineLink, pageShell } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
-import { getEateries, getPublishedPage } from '@/lib/dashboard/public'
+import { getEatAreas, getEateries, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
 import { EAT_LINKS, EAT_TIPS, EATS_CHECKED, MORE_EATS } from '@/lib/data/eats'
-import { EAT_AREA_LIST, EAT_AREAS, eateriesIn, type Eatery } from '@/lib/eateries'
+import { eateriesIn, type Eatery, type EateryArea } from '@/lib/eateries'
 import { SITE_PAGES } from '@/lib/sitePages'
 
-const FALLBACK_METADATA: Metadata = {
-  title: 'Places to Eat',
-  description:
-    'Campus dining halls, on-campus eateries, and nearby restaurants, cafés, and late-night spots around Georgia State’s downtown campus.',
-}
-
-function EatContent({ eateries }: { eateries: readonly Eatery[] }) {
+function EatContent({ eateries, areas }: { eateries: readonly Eatery[]; areas: readonly EateryArea[] }) {
+  const shown = areas.filter((a) => eateriesIn(eateries, a.slug).length)
 
   return (
     <div className={pageShell}>
@@ -56,29 +51,35 @@ function EatContent({ eateries }: { eateries: readonly Eatery[] }) {
 
       {/* Jump links */}
       <nav aria-label="Areas" className="-mt-4 flex flex-wrap gap-2">
-        {EAT_AREA_LIST.map((area) => (
+        {shown.map((area) => (
           <a
-            key={area}
-            href={`#${area}`}
+            key={area.slug}
+            href={`#${area.slug}`}
             className="rounded-full border border-line px-3.5 py-1.5 text-[0.85rem] font-semibold text-ink-soft no-underline transition-colors hover:border-brand hover:text-brand"
           >
-            {EAT_AREAS[area].title}
+            {area.title}
           </a>
         ))}
       </nav>
 
-      <PageBlock id="campus" title={EAT_AREAS.campus.title} description={EAT_AREAS.campus.description}>
-        <h3 className={cn(eyebrow, 'text-ink-faint')}>Dining halls</h3>
-        <EateryGrid eateries={eateriesIn(eateries, 'campus', 'dining-halls')} />
-        <h3 className={cn(eyebrow, 'mt-4 text-ink-faint')}>Eateries & cafés</h3>
-        <EateryGrid eateries={eateriesIn(eateries, 'campus', 'others')} />
-      </PageBlock>
-
-      {EAT_AREA_LIST.filter((a) => a !== 'campus').map((area) => (
-        <PageBlock key={area} id={area} title={EAT_AREAS[area].title} description={EAT_AREAS[area].description}>
-          <EateryGrid eateries={eateriesIn(eateries, area)} />
-        </PageBlock>
-      ))}
+      {/* An area with dining halls shows them first, apart from the rest */}
+      {shown.map((area) => {
+        const halls = eateriesIn(eateries, area.slug, 'dining-halls')
+        return (
+          <PageBlock key={area.slug} id={area.slug} title={area.title} description={area.description}>
+            {halls.length ? (
+              <>
+                <h3 className={cn(eyebrow, 'text-ink-faint')}>Dining halls</h3>
+                <EateryGrid eateries={halls} />
+                <h3 className={cn(eyebrow, 'mt-4 text-ink-faint')}>Eateries & cafés</h3>
+                <EateryGrid eateries={eateriesIn(eateries, area.slug, 'others')} />
+              </>
+            ) : (
+              <EateryGrid eateries={eateriesIn(eateries, area.slug)} />
+            )}
+          </PageBlock>
+        )
+      })}
 
       <PageBlock title="A little farther">
         <p className="text-[0.95rem] leading-relaxed text-muted">
@@ -121,7 +122,9 @@ export const revalidate = 300
 
 export async function generateMetadata(): Promise<Metadata> {
   const page = await getPublishedPage('eat')
-  return page ? { title: page.title, description: page.description ?? FALLBACK_METADATA.description } : FALLBACK_METADATA
+  // Its page in the dashboard, while published; otherwise the tab title officers set (or the site's own)
+  const meta = await pageMetadata('/eat')
+  return page ? managedPageMetadata(page, meta.description) : meta
 }
 
 /**
@@ -130,5 +133,5 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 export default async function EatPage() {
   const page = await getPublishedPage('eat')
-  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.eat.eyebrow} /> : <EatContent eateries={await getEateries()} />
+  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.eat.eyebrow} /> : <EatContent eateries={await getEateries()} areas={await getEatAreas()} />
 }

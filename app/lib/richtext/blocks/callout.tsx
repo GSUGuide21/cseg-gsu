@@ -45,7 +45,7 @@ export const parseTone = (value: unknown): CalloutTone => (typeof value === 'str
 /** The box, the icon's tile, and the words beside it */
 export const calloutClasses = (tone: CalloutTone) => ({
   box: cn('my-3 flex items-start gap-3 rounded-[0.875rem] border p-4 text-ink-soft', CALLOUT_TONES[tone].box),
-  tile: cn('grid size-8 shrink-0 place-items-center rounded-lg [&>svg]:size-[18px]', CALLOUT_TONES[tone].tile),
+  tile: cn('grid size-8 shrink-0 place-items-center rounded-lg [&>svg]:size-4.5', CALLOUT_TONES[tone].tile),
   body: 'min-w-0 flex-1 self-center leading-[1.7]',
 })
 

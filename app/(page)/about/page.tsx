@@ -2,18 +2,15 @@ import { BookOpen, Footprints, GraduationCap, MapPinned, MessageCircleQuestion, 
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import { ManagedPage } from '@/globals/Page/ManagedPage'
-import { getPublishedPage } from '@/lib/dashboard/public'
+import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
+import type { ClubDetails } from '@/lib/clubDetails'
+import { getClubDetails, getFaqs, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
+import { InlineText } from '@/lib/richtext/blocks/inline'
 import { SITE_PAGES } from '@/lib/sitePages'
 import { Faq, type FaqItem, PageBlock, PageCallout, PageHeader } from '@/globals/Page'
+import { CoreValues } from '@/globals/Page/CoreValues'
 import { CLUB_DESCRIPTION } from '@/globals/config/site'
-import { SOCIAL_LINKS } from '@/globals/config/social'
 import { button, card, cardText, grid2, iconTile, inlineLink, pageShell } from '@/globals/ui/styles'
-
-const FALLBACK_METADATA: Metadata = {
-  title: 'About',
-  description: CLUB_DESCRIPTION.oneLiner,
-}
 
 /** The PIN purpose statement, broken into its parts. */
 const FOCUS_AREAS: readonly { Icon: LucideIcon; title: string; body: string; link?: { href: string; label: string } }[] = [
@@ -40,7 +37,7 @@ const FOCUS_AREAS: readonly { Icon: LucideIcon; title: string; body: string; lin
   },
 ]
 
-const FAQ: readonly FaqItem[] = [
+const faq = ({ instagram: instagramUrl, pin }: ClubDetails['links']): readonly FaqItem[] => [
   {
     q: 'Who can join?',
     a: 'Any Georgia State student. CSEG is open to every major and every year, whether you are brand new to campus or almost done.',
@@ -54,7 +51,7 @@ const FAQ: readonly FaqItem[] = [
     a: (
       <>
         Request membership on our{' '}
-        <a href={SOCIAL_LINKS.pin} className={inlineLink} target="_blank" rel="noopener noreferrer">
+        <a href={pin} className={inlineLink} target="_blank" rel="noopener noreferrer">
           PIN page
         </a>
         , then come to an event. See{' '}
@@ -70,11 +67,11 @@ const FAQ: readonly FaqItem[] = [
     a: (
       <>
         Events are posted on{' '}
-        <a href={SOCIAL_LINKS.pin} className={inlineLink} target="_blank" rel="noopener noreferrer">
+        <a href={pin} className={inlineLink} target="_blank" rel="noopener noreferrer">
           PIN
         </a>{' '}
         and announced on{' '}
-        <a href={SOCIAL_LINKS.instagram} className={inlineLink} target="_blank" rel="noopener noreferrer">
+        <a href={instagramUrl} className={inlineLink} target="_blank" rel="noopener noreferrer">
           Instagram
         </a>
         .
@@ -83,7 +80,8 @@ const FAQ: readonly FaqItem[] = [
   },
 ]
 
-function AboutContent() {
+/** The common questions: the ones officers wrote in the dashboard, or the site's own until they add any */
+function AboutContent({ links, questions }: { links: ClubDetails['links']; questions: readonly FaqItem[] }) {
   return (
     <div className={pageShell}>
       <PageHeader eyebrow="About" title="About CSEG" lead={CLUB_DESCRIPTION.short}>
@@ -108,6 +106,10 @@ function AboutContent() {
         </div>
       </PageBlock>
 
+      <PageBlock id="values" title="Our core values" description="What guides everything CSEG does, and spells where we do it.">
+        <CoreValues />
+      </PageBlock>
+
       <PageBlock title="What we focus on" description="How CSEG helps Panthers from day one to graduation.">
         <div className={grid2}>
           {FOCUS_AREAS.map(({ Icon, title, body, link }) => (
@@ -129,7 +131,7 @@ function AboutContent() {
 
       <PageBlock id="faq" title="Common questions">
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-8">
-          <Faq items={FAQ} />
+          <Faq items={questions.length ? questions : faq(links)} />
           <aside
             className={card({
               accent: true,
@@ -168,11 +170,15 @@ export const revalidate = 300
 
 export async function generateMetadata(): Promise<Metadata> {
   const page = await getPublishedPage('about')
-  return page ? { title: page.title, description: page.description ?? FALLBACK_METADATA.description } : FALLBACK_METADATA
+  // Its page in the dashboard, while published; otherwise the tab title officers set (or the site's own)
+  const meta = await pageMetadata('/about')
+  return page ? managedPageMetadata(page, meta.description) : meta
 }
 
 /** The About page officers wrote in the dashboard, once it's published; the one above until then */
 export default async function AboutPage() {
   const page = await getPublishedPage('about')
-  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.about.eyebrow} /> : <AboutContent />
+  if (page) return <ManagedPage page={page} eyebrow={SITE_PAGES.about.eyebrow} />
+  const [{ links }, faqs] = await Promise.all([getClubDetails(), getFaqs()])
+  return <AboutContent links={links} questions={faqs.map((f) => ({ q: f.question, a: <InlineText text={f.answer} /> }))} />
 }

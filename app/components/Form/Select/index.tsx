@@ -8,7 +8,7 @@ import { useFieldControl } from '../Field'
 import { menuList, panel } from '../Input/variants'
 import type { Option, OptionGroup } from '../types'
 import { useControllable } from '../useControllable'
-import { popoverPlacement } from '../usePopover'
+import { opensAbove, popoverPlacement } from '../usePopover'
 import { SelectContext } from './Context'
 import { SelectGroup } from './Menu/Group'
 import { SelectOption } from './Menu/Option'
@@ -94,11 +94,7 @@ export const Select: FC<SelectProps> = (props) => {
 
   const openMenu = (active?: string) => {
     if (field.disabled) return
-    const box = rootRef.current?.getBoundingClientRect()
-    if (box) {
-      const below = window.innerHeight - box.bottom
-      setAbove(below < MENU_ROOM && box.top > below)
-    }
+    if (rootRef.current) setAbove(opensAbove(rootRef.current, MENU_ROOM))
     setActiveValue(active ?? choices.find((o) => selected.includes(o.value))?.value ?? choices[0]?.value ?? null)
     setOpen(true)
   }

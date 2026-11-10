@@ -1,10 +1,14 @@
 'use client'
 
-import { createContext, useContext } from 'react'
+import { createContext, useContext, type ComponentType } from 'react'
+
+import type { ImagePickerProps } from './types'
 
 export interface RichTextOptions {
   /** Stores an image and gives back its https address; throws with a message to show when it can't */
   uploadImage?: (file: File) => Promise<string>
+  /** A dialog for picking an image that's already stored */
+  imagePicker?: ComponentType<ImagePickerProps>
   /** Says how an upload went, under the writing area (pasted or dropped images) */
   reportUpload: (status: UploadStatus) => void
 }

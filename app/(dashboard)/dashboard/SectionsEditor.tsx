@@ -1,10 +1,11 @@
 'use client'
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import type { Dispatch, FC, SetStateAction } from 'react'
+import type { ComponentType, Dispatch, FC, SetStateAction } from 'react'
 
 import { Button } from '@/components'
 import { RichTextEditor } from '@/components/Form'
+import type { ImagePickerProps } from '@/components/Form/RichText/types'
 import { parseRichText } from '@/lib/richtext'
 import { sectionId } from '@/lib/richtext/blocks'
 import { PAGE_SECTIONS_MAX, PAGE_SUBTITLE_MAX, SECTION_TITLE_MAX, type PageSection } from '@/lib/supabase/types'
@@ -45,7 +46,8 @@ export const SectionsEditor: FC<{
   onText: (id: string, text: string) => void
   errors: Record<string, string | undefined>
   uploadImage?: (file: File) => Promise<string>
-}> = ({ sections, setSections, onText, errors, uploadImage }) => {
+  imagePicker?: ComponentType<ImagePickerProps>
+}> = ({ sections, setSections, onText, errors, uploadImage, imagePicker }) => {
   const patch = (id: string, change: Partial<PageSection>) => setSections((all) => all.map((s) => (s.id === id ? { ...s, ...change } : s)))
   const move = (i: number, by: -1 | 1) =>
     setSections((all) => {
@@ -59,7 +61,7 @@ export const SectionsEditor: FC<{
       {sections.map((s, i) => {
         const error = errors[`section-${s.id}`]
         return (
-          <section key={s.id} aria-label={s.title || `Section ${i + 1}`} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+          <section key={s.id} aria-label={s.title || `Section ${i + 1}`} className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-card">
             <div className="flex items-center gap-2">
               <span className="text-[0.75rem] font-bold tracking-wide text-muted uppercase">Section {i + 1}</span>
               <div className="ml-auto flex items-center gap-0.5">
@@ -127,6 +129,7 @@ export const SectionsEditor: FC<{
               aria-label={`Section ${i + 1} writing`}
               defaultValue={s.body}
               uploadImage={uploadImage}
+              imagePicker={imagePicker}
               minHeight="8rem"
               placeholder="Write this section…"
               onChange={({ json, text }) => {

@@ -9,6 +9,7 @@ export const SITE_PAGES = {
   contact: { path: '/contact', eyebrow: 'Contact' },
   resources: { path: '/resources', eyebrow: 'Resources' },
   eat: { path: '/eat', eyebrow: 'Food' },
+  constitution: { path: '/constitution', eyebrow: 'About' },
 } as const
 
 export type SitePageSlug = keyof typeof SITE_PAGES

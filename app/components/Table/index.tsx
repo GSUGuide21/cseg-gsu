@@ -1,10 +1,12 @@
 'use client'
 
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
-import { useId, useMemo, type ReactNode } from 'react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Rows3, X } from 'lucide-react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 
 import { cn } from '@/lib/cn'
 
+import { ActionMenu } from '../ActionMenu'
+import type { ActionMenuEntry } from '../ActionMenu/types'
 import { Checkbox } from '../Form'
 import { useControllable } from '../Form/useControllable'
 import { Skeleton } from '../Skeleton'
@@ -51,6 +53,9 @@ const columnName = <T,>(c: TableColumn<T>) => c.label ?? (typeof c.header === 's
  *     bulkActions={(ids) => <Button size="sm" variant="outline">Export {ids.length}</Button>}
  *     rowActions={(m) => <ActionMenu label={`Actions for ${m.name}`} items={…} />}
  *   />
+ *
+ * With `columnMenu`, it works like a data grid: each header gets a menu to sort, to sort by
+ * several columns, to show and hide columns, and to group rows by a `groupable` column.
  */
 export function Table<T>({
   columns,
@@ -58,6 +63,10 @@ export function Table<T>({
   getRowId,
   caption,
   hideCaption = false,
+  titleBar = false,
+  columnMenu = false,
+  defaultHiddenColumns = [],
+  defaultGroupBy,
   sort: sortProp,
   defaultSort = null,
   onSortChange,
@@ -80,12 +89,36 @@ export function Table<T>({
   const [selected, setSelected] = useControllable(selectedProp, defaultSelected, onSelectedChange)
   const id = useId()
 
+  // Sorts after the first, for rows the first leaves tied
+  const [thenBy, setThenBy] = useState<TableSort[]>([])
+  const [hidden, setHidden] = useState(defaultHiddenColumns)
+  const [groupKey, setGroupKey] = useState<string | null>(defaultGroupBy ?? null)
+  // A grouped column says the same thing as its group headings, so it steps aside unless asked
+  const [groupedShown, setGroupedShown] = useState(false)
+  const [collapsed, setCollapsed] = useState<string[]>([])
+
   const headerIndex = Math.max(0, columns.findIndex((c) => c.rowHeader))
-  const sortColumn = sort ? columns.find((c) => c.key === sort.key) : undefined
+  const sorts = useMemo(() => (sort ? [sort, ...thenBy.filter((s) => s.key !== sort.key)] : []), [sort, thenBy])
+  // Sorting is stable, so sorting by the last level first leaves the first level on top
   const shown = useMemo(
-    () => (manualSort || !sort ? rows : sortRows(rows, sortColumn, sort.direction)),
-    [rows, manualSort, sort, sortColumn]
+    () => (manualSort || !sorts.length ? rows : sorts.reduceRight((sorted, s) => sortRows(sorted, columns.find((c) => c.key === s.key), s.direction), rows)),
+    [rows, manualSort, sorts, columns]
   )
+  const groupColumn = columns.find((c) => c.key === groupKey && c.groupable)
+  const visible = columns.filter((c) => !hidden.includes(c.key) && (c !== groupColumn || groupedShown))
+  const headerKey = (visible.find((c) => c.rowHeader) ?? visible[0])?.key
+
+  const groups = useMemo(() => {
+    if (!groupColumn) return null
+    const found = new Map<string, T[]>()
+    for (const row of shown) {
+      const name = (groupColumn.groupValue ? groupColumn.groupValue(row) : (value(row, groupColumn.key) as SortValue))?.toString() || 'None'
+      found.set(name, [...(found.get(name) ?? []), row])
+    }
+    const named = [...found].map(([name, members]) => ({ name, members }))
+    // Sorted on that column, the groups keep the sort's order; otherwise A to Z
+    return sorts.some((s) => s.key === groupColumn.key) ? named : named.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  }, [groupColumn, shown, sorts])
   const sortable = columns.filter((c) => c.sortable)
 
   const ids = shown.map(getRowId)
@@ -100,17 +133,133 @@ export function Table<T>({
   const toggle = (rowId: string, on: boolean) => setSelected(on ? [...selected, rowId] : selected.filter((s) => s !== rowId))
   const toggleAll = (on: boolean) => setSelected(on ? Array.from(new Set([...selected, ...ids])) : selected.filter((s) => !ids.includes(s)))
 
-  const sortBy = (key: string) =>
+  const sortBy = (key: string) => {
+    setThenBy([])
     setSort({ key, direction: sort?.key === key && sort.direction === 'ascending' ? 'descending' : 'ascending' })
+  }
+  /** Adds a column to the sort, or changes its direction if it's already there */
+  const addSort = (key: string, direction?: TableSort['direction']) => {
+    const flip = (d: TableSort['direction']) => direction ?? (d === 'ascending' ? 'descending' : 'ascending')
+    if (!sort) setSort({ key, direction: direction ?? 'ascending' })
+    else if (sort.key === key) setSort({ key, direction: flip(sort.direction) })
+    else if (thenBy.some((s) => s.key === key)) setThenBy(thenBy.map((s) => (s.key === key ? { key, direction: flip(s.direction) } : s)))
+    else setThenBy([...thenBy, { key, direction: direction ?? 'ascending' }])
+  }
+  const clearSort = (key: string) => {
+    const left = sorts.filter((s) => s.key !== key)
+    setThenBy(left.slice(1))
+    setSort(left[0] ?? null)
+  }
+
+  const menuFor = (c: TableColumn<T>): ActionMenuEntry[] => {
+    const inSort = sorts.some((s) => s.key === c.key)
+    const others = sorts.some((s) => s.key !== c.key)
+    const grouped = groupColumn === c
+    const sorting: ActionMenuEntry[] = !c.sortable
+      ? []
+      : [
+          { label: 'Sort ascending', icon: <ArrowUp />, onSelect: () => (setThenBy([]), setSort({ key: c.key, direction: 'ascending' })) },
+          { label: 'Sort descending', icon: <ArrowDown />, onSelect: () => (setThenBy([]), setSort({ key: c.key, direction: 'descending' })) },
+          ...(others
+            ? [
+                { label: inSort ? 'Then ascending' : 'Add to sort, ascending', icon: <ArrowUp />, onSelect: () => addSort(c.key, 'ascending') },
+                { label: inSort ? 'Then descending' : 'Add to sort, descending', icon: <ArrowDown />, onSelect: () => addSort(c.key, 'descending') },
+              ]
+            : []),
+          ...(inSort ? [{ label: 'Clear this sort', icon: <X />, onSelect: () => clearSort(c.key) }] : []),
+          'separator',
+        ]
+    const grouping: ActionMenuEntry[] = [
+      ...(c.groupable && !grouped ? [{ label: 'Group by this field', icon: <Rows3 />, disabled: visible.length === 1 && visible[0] === c, onSelect: () => (setGroupKey(c.key), setCollapsed([])) }] : []),
+      ...(groupColumn ? [{ label: `Show ${columnName(groupColumn)} in groups`, checked: groupedShown, onSelect: () => setGroupedShown(!groupedShown) }] : []),
+      ...(groupColumn ? [{ label: 'Stop grouping', icon: <X />, onSelect: () => setGroupKey(null) }] : []),
+    ]
+    // Grouping before the list of columns, which can run long enough to scroll
+    return [
+      ...sorting,
+      ...(grouping.length ? ([...grouping, 'separator'] as ActionMenuEntry[]) : []),
+      {
+        label: 'Columns',
+        items: columns
+          .filter((other) => other !== groupColumn || groupedShown)
+          .map((other) => {
+            const off = hidden.includes(other.key)
+            return {
+              label: columnName(other),
+              checked: !off,
+              // One column always stays
+              disabled: !off && visible.length === 1,
+              onSelect: () => setHidden(off ? hidden.filter((k) => k !== other.key) : [...hidden, other.key]),
+            }
+          }),
+      },
+    ]
+  }
 
   const pad = density === 'compact' ? 'px-3 py-2' : 'px-4 py-3'
-  const colCount = columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)
+  const colCount = visible.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)
   // Stacked: rows become cards. Explicit roles keep it a table to screen readers once
   // CSS display changes take the table's own semantics away.
   const s = (classes: string) => (stackOnNarrow ? classes : '')
 
   const placeholders = loading && rows.length === 0
   const toolbar = selectable || (stackOnNarrow && sortable.length > 0)
+
+  const renderRow = (row: T) => {
+    const rowId = getRowId(row)
+    const on = picked.has(rowId)
+    return (
+      <tr
+        key={rowId}
+        role="row"
+        className={cn(
+          'border-b border-line transition-colors last:border-0',
+          on ? 'bg-brand-wash' : 'hover:bg-fill',
+          s('@max-[40rem]:relative @max-[40rem]:flex @max-[40rem]:flex-col @max-[40rem]:rounded-xl @max-[40rem]:border @max-[40rem]:p-3 @max-[40rem]:last:border'),
+          s(on ? '@max-[40rem]:border-brand-edge' : '')
+        )}
+      >
+        {selectable ? (
+          <td role="cell" className={cn(pad, 'w-10', s('@max-[40rem]:absolute @max-[40rem]:top-3 @max-[40rem]:right-3 @max-[40rem]:p-0'))}>
+            <Checkbox checked={on} onCheckedChange={(v) => toggle(rowId, v)} aria-label={`Select ${labelFor(row)}`} />
+          </td>
+        ) : null}
+        {visible.map((c) => {
+          const content = (c.cell ? c.cell(row) : (value(row, c.key) as ReactNode)) ?? '—'
+          const header = c.key === headerKey
+          const Cell = header ? 'th' : 'td'
+          return (
+            <Cell
+              key={c.key}
+              role={header ? 'rowheader' : 'cell'}
+              scope={header ? 'row' : undefined}
+              data-label={columnName(c)}
+              className={cn(
+                pad,
+                'align-middle',
+                alignClass[c.align ?? 'start'],
+                header ? 'font-semibold text-ink' : 'text-ink-soft',
+                // Stacked: the header line is the card's title; others are label / value lines
+                s(
+                  header
+                    ? cn('@max-[40rem]:block @max-[40rem]:px-0 @max-[40rem]:pt-0 @max-[40rem]:pb-1.5 @max-[40rem]:text-left @max-[40rem]:text-[1rem]', selectable && '@max-[40rem]:pr-10')
+                    : '@max-[40rem]:flex @max-[40rem]:justify-between @max-[40rem]:gap-4 @max-[40rem]:px-0 @max-[40rem]:py-1 @max-[40rem]:text-right @max-[40rem]:before:shrink-0 @max-[40rem]:before:text-left @max-[40rem]:before:font-semibold @max-[40rem]:before:text-muted @max-[40rem]:before:content-[attr(data-label)]'
+                ),
+                c.hideWhenStacked && s('@max-[40rem]:hidden')
+              )}
+            >
+              {content}
+            </Cell>
+          )
+        })}
+        {rowActions ? (
+          <td role="cell" className={cn(pad, 'w-12 text-right', s('@max-[40rem]:flex @max-[40rem]:w-auto @max-[40rem]:justify-end @max-[40rem]:px-0 @max-[40rem]:pt-1.5 @max-[40rem]:pb-0'))}>
+            {rowActions(row)}
+          </td>
+        ) : null}
+      </tr>
+    )
+  }
 
   return (
     <div className={cn('@container flex min-w-0 flex-col gap-3', className)}>
@@ -157,8 +306,15 @@ export function Table<T>({
         </div>
       ) : null}
 
+      <div className={cn('overflow-hidden rounded-xl border border-line shadow-card', s('@max-[40rem]:overflow-visible @max-[40rem]:rounded-none @max-[40rem]:border-0 @max-[40rem]:shadow-none'))}>
+      {titleBar ? (
+        // The caption below names the table for screen readers; this is the same words to look at
+        <div aria-hidden className={cn('bg-linear-to-r from-brand-solid to-brand-bright px-4 py-3 text-[1.05rem] font-bold text-white', s('@max-[40rem]:mb-2 @max-[40rem]:rounded-xl'))}>
+          {caption}
+        </div>
+      ) : null}
       <div
-        className={cn('overflow-auto rounded-xl border border-line', s('@max-[40rem]:overflow-visible @max-[40rem]:rounded-none @max-[40rem]:border-0'))}
+        className={cn('overflow-auto', s('@max-[40rem]:overflow-visible'))}
         style={maxHeight ? { maxHeight } : undefined}
         // A table that scrolls sideways can be scrolled from the keyboard
         tabIndex={maxHeight ? 0 : undefined}
@@ -170,7 +326,7 @@ export function Table<T>({
           aria-busy={loading || undefined}
           className={cn('w-full border-collapse text-[0.9rem] transition-opacity', loading && rows.length > 0 && 'opacity-55', s('@max-[40rem]:block'))}
         >
-          <caption id={`${id}-caption`} className={cn('px-4 py-3 text-left font-bold text-ink', hideCaption && 'sr-only', s('@max-[40rem]:block @max-[40rem]:px-0'))}>
+          <caption id={`${id}-caption`} className={cn('px-4 py-3 text-left font-bold text-ink', (hideCaption || titleBar) && 'sr-only', s('@max-[40rem]:block @max-[40rem]:px-0'))}>
             {caption}
           </caption>
           <thead role="rowgroup" className={s('@max-[40rem]:hidden')}>
@@ -180,27 +336,30 @@ export function Table<T>({
                   <span className="sr-only">Select</span>
                 </th>
               ) : null}
-              {columns.map((c) => {
-                const active = sort?.key === c.key
-                const Icon = !active ? ArrowUpDown : sort.direction === 'ascending' ? ArrowUp : ArrowDown
+              {visible.map((c) => {
+                const position = sorts.findIndex((s) => s.key === c.key)
+                const active = position >= 0
+                const direction = sorts[position]?.direction
+                const Icon = !active ? ArrowUpDown : direction === 'ascending' ? ArrowUp : ArrowDown
                 return (
                   <th
                     key={c.key}
                     role="columnheader"
                     scope="col"
-                    aria-sort={c.sortable ? (active ? sort.direction : 'none') : undefined}
+                    aria-sort={c.sortable ? (active ? direction : 'none') : undefined}
                     style={c.width ? { width: c.width } : undefined}
                     className={cn(
                       pad,
-                      'bg-fill text-[0.78rem] font-bold tracking-wide whitespace-nowrap text-ink-soft uppercase',
+                      'group/column bg-fill text-[0.78rem] font-bold tracking-wide whitespace-nowrap text-ink-soft uppercase',
                       alignClass[c.align ?? 'start'],
+                      columnMenu && 'relative',
                       maxHeight && 'sticky top-0 z-1'
                     )}
                   >
                     {c.sortable ? (
                       <button
                         type="button"
-                        onClick={() => sortBy(c.key)}
+                        onClick={(e) => (columnMenu && e.shiftKey ? addSort(c.key) : sortBy(c.key))}
                         className={cn(
                           '-mx-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-bold tracking-wide uppercase hover:text-ink focus-visible:outline-2 focus-visible:outline-brand',
                           active && 'text-ink',
@@ -209,10 +368,31 @@ export function Table<T>({
                       >
                         {c.header}
                         <Icon size={14} aria-hidden className={active ? 'text-brand' : 'opacity-50'} />
+                        {active && sorts.length > 1 ? <span className="text-[0.7rem] text-brand tabular-nums">{position + 1}</span> : null}
                       </button>
                     ) : (
                       c.header
                     )}
+                    {columnMenu ? (
+                      // Over the header's edge, so a column is no wider for having a menu. No transform here: it
+                      // would trap the menu, which is placed against the window, inside the scrolling table
+                      <span className="absolute inset-y-0 right-0.5 flex items-center">
+                        <ActionMenu
+                          label={`Options for ${columnName(c)}`}
+                          items={menuFor(c)}
+                          trigger={
+                            // Shows on hover or focus; always there where there's no hover to find it with
+                            <button
+                              type="button"
+                              aria-label={`Options for ${columnName(c)}`}
+                              className="grid size-6 cursor-pointer place-items-center rounded-md text-ink-soft opacity-0 transition-opacity group-hover/column:opacity-100 hover:bg-brand-tint hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand aria-expanded:opacity-100 [@media(hover:none)]:opacity-100"
+                            >
+                              <ChevronDown size={14} aria-hidden />
+                            </button>
+                          }
+                        />
+                      </span>
+                    ) : null}
                   </th>
                 )
               })}
@@ -240,65 +420,33 @@ export function Table<T>({
                   {empty}
                 </td>
               </tr>
-            ) : (
-              shown.map((row) => {
-                const rowId = getRowId(row)
-                const on = picked.has(rowId)
-                return (
-                  <tr
-                    key={rowId}
-                    role="row"
-                    className={cn(
-                      'border-b border-line transition-colors last:border-0',
-                      on ? 'bg-brand-wash' : 'hover:bg-fill',
-                      s('@max-[40rem]:relative @max-[40rem]:flex @max-[40rem]:flex-col @max-[40rem]:rounded-xl @max-[40rem]:border @max-[40rem]:p-3 @max-[40rem]:last:border'),
-                      s(on ? '@max-[40rem]:border-brand-edge' : '')
-                    )}
-                  >
-                    {selectable ? (
-                      <td role="cell" className={cn(pad, 'w-10', s('@max-[40rem]:absolute @max-[40rem]:top-3 @max-[40rem]:right-3 @max-[40rem]:p-0'))}>
-                        <Checkbox checked={on} onCheckedChange={(v) => toggle(rowId, v)} aria-label={`Select ${labelFor(row)}`} />
-                      </td>
-                    ) : null}
-                    {columns.map((c, ci) => {
-                      const content = (c.cell ? c.cell(row) : (value(row, c.key) as ReactNode)) ?? '—'
-                      const header = ci === headerIndex
-                      const Cell = header ? 'th' : 'td'
-                      return (
-                        <Cell
-                          key={c.key}
-                          role={header ? 'rowheader' : 'cell'}
-                          scope={header ? 'row' : undefined}
-                          data-label={columnName(c)}
-                          className={cn(
-                            pad,
-                            'align-middle',
-                            alignClass[c.align ?? 'start'],
-                            header ? 'font-semibold text-ink' : 'text-ink-soft',
-                            // Stacked: the header line is the card's title; others are label / value lines
-                            s(
-                              header
-                                ? cn('@max-[40rem]:block @max-[40rem]:px-0 @max-[40rem]:pt-0 @max-[40rem]:pb-1.5 @max-[40rem]:text-left @max-[40rem]:text-[1rem]', selectable && '@max-[40rem]:pr-10')
-                                : '@max-[40rem]:flex @max-[40rem]:justify-between @max-[40rem]:gap-4 @max-[40rem]:px-0 @max-[40rem]:py-1 @max-[40rem]:text-right @max-[40rem]:before:shrink-0 @max-[40rem]:before:text-left @max-[40rem]:before:font-semibold @max-[40rem]:before:text-muted @max-[40rem]:before:content-[attr(data-label)]'
-                            ),
-                            c.hideWhenStacked && s('@max-[40rem]:hidden')
-                          )}
-                        >
-                          {content}
-                        </Cell>
-                      )
-                    })}
-                    {rowActions ? (
-                      <td role="cell" className={cn(pad, 'w-12 text-right', s('@max-[40rem]:flex @max-[40rem]:w-auto @max-[40rem]:justify-end @max-[40rem]:px-0 @max-[40rem]:pt-1.5 @max-[40rem]:pb-0'))}>
-                        {rowActions(row)}
-                      </td>
-                    ) : null}
-                  </tr>
-                )
+            ) : groups ? (
+              groups.flatMap(({ name, members }) => {
+                const closed = collapsed.includes(name)
+                return [
+                  <tr key={`group-${name}`} role="row" className={cn('border-b border-line bg-brand-wash', s('@max-[40rem]:block @max-[40rem]:rounded-xl @max-[40rem]:border'))}>
+                    <th role="rowheader" scope="rowgroup" colSpan={colCount} className={cn('text-left', s('@max-[40rem]:block'))}>
+                      <button
+                        type="button"
+                        aria-expanded={!closed}
+                        onClick={() => setCollapsed(closed ? collapsed.filter((g) => g !== name) : [...collapsed, name])}
+                        className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-[0.85rem] font-bold text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+                      >
+                        {closed ? <ChevronRight size={15} aria-hidden /> : <ChevronDown size={15} aria-hidden />}
+                        {name}
+                        <span className="font-normal text-muted tabular-nums">{members.length}</span>
+                      </button>
+                    </th>
+                  </tr>,
+                  ...(closed ? [] : members.map(renderRow)),
+                ]
               })
+            ) : (
+              shown.map(renderRow)
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   )

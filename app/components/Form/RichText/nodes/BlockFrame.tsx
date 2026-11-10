@@ -16,9 +16,10 @@ const frameTool =
  * Around a block the editor draws with React (an image, a row of buttons): a click selects
  * it (Backspace then takes it out, as with a divider), and while it's selected, Edit and
  * Remove sit on its corner. Enter or a double-click opens its editing too, so it works
- * from the keyboard: the arrow keys select it like any block.
+ * from the keyboard: the arrow keys select it like any block. An `inline` item is framed
+ * the same way, in the line of text, with Edit and Remove just under it.
  */
-export const BlockFrame: FC<{ nodeKey: NodeKey; label: string; onEdit: () => void; children: ReactNode }> = ({ nodeKey, label, onEdit, children }) => {
+export const BlockFrame: FC<{ nodeKey: NodeKey; label: string; onEdit: () => void; inline?: boolean; children: ReactNode }> = ({ nodeKey, label, onEdit, inline = false, children }) => {
   const [editor] = useLexicalComposerContext()
   const editable = useLexicalEditable()
   const [selected, setSelected, clearSelected] = useLexicalNodeSelection(nodeKey)
@@ -41,9 +42,12 @@ export const BlockFrame: FC<{ nodeKey: NodeKey; label: string; onEdit: () => voi
     editor.focus()
   }
 
+  // Spans, in a line of text
+  const Box = inline ? 'span' : 'div'
+
   return (
-    <div
-      className={cn('relative rounded-xl outline-offset-4', editable && 'cursor-default', selected && 'outline-2 outline-brand')}
+    <Box
+      className={cn('relative', inline ? 'inline-block max-w-full rounded-md outline-offset-1' : 'rounded-xl outline-offset-4', editable && 'cursor-default', selected && 'outline-2 outline-brand')}
       onClick={(e) => {
         if (!editable) return
         if (!e.shiftKey) clearSelected()
@@ -53,13 +57,13 @@ export const BlockFrame: FC<{ nodeKey: NodeKey; label: string; onEdit: () => voi
     >
       {children}
       {editable && selected ? (
-        <div
+        <Box
           role="group"
           aria-label={label}
           // A click here is for these buttons, not for selecting the block again
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 shadow-[0_6px_16px_rgb(0_0_0/0.12)]"
+          className={cn('absolute z-10 flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 shadow-[0_6px_16px_rgb(0_0_0/0.12)]', inline ? 'top-full left-0 mt-1 w-max' : 'top-2 right-2')}
         >
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onEdit} className={frameTool}>
             <Pencil aria-hidden /> Edit
@@ -67,8 +71,8 @@ export const BlockFrame: FC<{ nodeKey: NodeKey; label: string; onEdit: () => voi
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={remove} className={cn(frameTool, 'hover:bg-danger/10 hover:text-danger')}>
             <Trash2 aria-hidden /> Remove
           </button>
-        </div>
+        </Box>
       ) : null}
-    </div>
+    </Box>
   )
 }

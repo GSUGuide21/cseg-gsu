@@ -7,6 +7,6 @@ export const metadata = { title: 'Settings' }
 
 export default async function SettingsPage() {
   const { officer } = await requireOfficer()
-  const { settings, officers } = await getSettings()
-  return <SettingsView settings={settings} officers={officers} me={officer.email} isAdmin={officer.role === 'admin'} />
+  const { settings, officers, terms } = await getSettings()
+  return <SettingsView settings={settings} officers={officers} terms={terms} me={officer.email} isAdmin={officer.role === 'admin'} />
 }

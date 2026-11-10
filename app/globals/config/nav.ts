@@ -26,7 +26,10 @@ export const NAV_LINKS: readonly NavItem[] = [
       description: 'A student organization helping Panthers make the most of campus life.',
       links: [
         { href: '/about', label: 'About CSEG', description: 'Mission, vision, and what we do' },
+        { href: '/executives', label: 'Executives', description: 'The students who lead CSEG' },
         { href: '/about#faq', label: 'FAQ', description: 'Common questions, answered' },
+        { href: '/constitution', label: 'Constitution', description: 'How CSEG is organized and run' },
+        { href: '/affiliates', label: 'Affiliates', description: 'The organizations we partner with' },
         { href: '/contact', label: 'Contact', description: 'Get in touch with the officers' },
       ],
     },
@@ -66,11 +69,14 @@ export const FOOTER_NAV_SECTIONS: readonly { title: string; links: readonly NavL
     links: [
       { href: '/', label: 'Home' },
       { href: '/about', label: 'About' },
+      { href: '/executives', label: 'Executives' },
       { href: '/events', label: 'Events' },
       { href: '/map', label: 'Campus map' },
       { href: '/eat', label: 'Places to eat' },
       { href: '/resources', label: 'Resources' },
       { href: '/about#faq', label: 'FAQ' },
+      { href: '/constitution', label: 'Constitution' },
+      { href: '/affiliates', label: 'Affiliates' },
     ],
   },
   {

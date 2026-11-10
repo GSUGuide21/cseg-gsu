@@ -10,7 +10,7 @@
  * Uses SUPABASE_SERVICE_ROLE_KEY from .env.local, so run it only on your machine.
  */
 import { EATERIES } from '../app/lib/data/eats'
-import { EAT_AREA_LIST, eateryToRow } from '../app/lib/eateries'
+import { BUILT_IN_AREAS, eateryToRow } from '../app/lib/eateries'
 import { adminClient } from './supabase-admin'
 
 async function main() {
@@ -18,13 +18,13 @@ async function main() {
   const supabase = adminClient()
 
   const { data: existing, error } = await supabase.from('eateries').select('slug')
-  if (error) throw new Error(`${error.message} (has the eateries migration been applied?)`)
+  if (error) throw new Error(`${error.message} (have the eateries migrations been applied?)`)
   const taken = new Set((existing ?? []).map((e) => e.slug))
 
   // Each area's eateries in the guide's order, 10 apart so new ones fit between
-  const rows = EAT_AREA_LIST.flatMap((area) => EATERIES.filter((e) => e.area === area).map((e, i) => eateryToRow(e, (i + 1) * 10)))
+  const rows = BUILT_IN_AREAS.flatMap(({ slug: area }) => EATERIES.filter((e) => e.area === area).map((e, i) => eateryToRow(e, (i + 1) * 10)))
   const fresh = rows.filter((r) => !taken.has(r.slug))
-  for (const area of EAT_AREA_LIST) {
+  for (const { slug: area } of BUILT_IN_AREAS) {
     const inArea = rows.filter((r) => r.area === area)
     const adding = fresh.filter((r) => r.area === area).length
     console.log(`${write ? 'add' : 'would add'}  ${area}: ${adding} of ${inArea.length}${adding < inArea.length ? ` (${inArea.length - adding} already there)` : ''}`)

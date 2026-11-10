@@ -5,16 +5,18 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import type { FC } from 'react'
 
+import { useClubDetails } from '@/globals/ClubDetails'
 import { FOOTER_NAV_SECTIONS, isNavActive } from '@/globals/config/nav'
-import { CLUB_DESCRIPTION, SITE_NAME, SITE_SHORT_NAME } from '@/globals/config/site'
-import { CONTACT_EMAIL, GSU_URL } from '@/globals/config/social'
-import { LogoMark } from '@/globals/Logo'
+import { SITE_NAME } from '@/globals/config/site'
+import { GSU_URL } from '@/globals/config/social'
+import { Wordmark } from '@/globals/Logo'
 import { SocialIcons } from '@/globals/SocialIcons'
 import { button, card, eyebrow } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 
 export const Footer: FC = () => {
   const pathname = usePathname()
+  const { tagline, contactEmail } = useClubDetails()
   const year = new Date().getFullYear()
 
   return (
@@ -22,14 +24,8 @@ export const Footer: FC = () => {
       <div className="mx-auto flex max-w-7xl flex-col gap-10 px-[clamp(1rem,5vw,4rem)] pt-12 pb-6">
         <div className="grid grid-cols-1 items-start gap-10 sm:grid-cols-2 lg:grid-cols-[minmax(15rem,1.2fr)_minmax(0,1fr)_minmax(15rem,0.9fr)]">
           <div className="flex max-w-96 flex-col gap-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-3 self-start text-ink no-underline transition-colors hover:text-brand"
-            >
-              <LogoMark size={48} />
-              <span className="text-[1.15rem] font-extrabold">{SITE_SHORT_NAME}</span>
-            </Link>
-            <p className="text-[0.9rem] leading-relaxed text-muted">{CLUB_DESCRIPTION.oneLiner}</p>
+            <Wordmark size="lg" className="self-start" />
+            <p className="text-[0.9rem] leading-relaxed text-muted">{tagline}</p>
             <SocialIcons />
           </div>
 
@@ -76,11 +72,9 @@ export const Footer: FC = () => {
             &copy; <time dateTime={String(year)}>{year}</time> {SITE_NAME}
           </span>
           <div className="flex flex-col items-start gap-x-5 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center">
-            {CONTACT_EMAIL ? (
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-ink hover:text-brand hover:underline">
-                {CONTACT_EMAIL}
-              </a>
-            ) : null}
+            <a href={`mailto:${contactEmail}`} className="text-ink hover:text-brand hover:underline">
+              {contactEmail}
+            </a>
             <span>
               A{' '}
               <a

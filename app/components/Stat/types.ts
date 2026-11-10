@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import type { Tone } from '../tones'
+
 export interface StatDelta {
   /** The change: 12 for +12% (or +12, with format "number"); negative for a drop */
   value: number
@@ -24,6 +26,8 @@ export interface StatProps {
   /** What `trend` covers, for screen readers: "last 12 weeks" */
   trendLabel?: string
   icon?: ReactNode
+  /** The color of the icon's badge. Default "brand". */
+  tone?: Tone
   /** A line under the value */
   description?: ReactNode
   /** Makes the whole tile a link to the details */

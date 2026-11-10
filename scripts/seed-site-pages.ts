@@ -1,7 +1,8 @@
 /**
- * Puts the site's own pages (About, Join, Contact, Resources, Places to Eat) in the dashboard, as drafts
+ * Puts the site's own pages (About, Join, Contact, Resources, Places to Eat, Constitution) in the dashboard, as drafts
  * laid out in sections, so officers can edit them there. A draft changes nothing on the
- * site: once one is published, it shows at that page's path in place of the code's.
+ * site: once one is published, it shows at that page's path in place of the code's. Also
+ * adds the starter pages (Panther Picks), which show at /pages/<slug> once published.
  *
  *   npm run pages:seed            shows what it would add
  *   npm run pages:seed -- --write adds them
@@ -9,8 +10,11 @@
  * It never changes a page that's already there (one with the same web address is left
  * alone). Uses SUPABASE_SERVICE_ROLE_KEY from .env.local, so run it only on your machine.
  */
-import { SITE_PAGE_SEEDS } from './site-pages'
+import { SITE_PAGE_SEEDS, STARTER_PAGE_SEEDS } from './site-pages'
 import { adminClient } from './supabase-admin'
+
+/** The site's own pages, then the starter pages */
+const SEEDS = [...SITE_PAGE_SEEDS, ...STARTER_PAGE_SEEDS]
 
 async function main() {
   const write = process.argv.includes('--write')
@@ -21,12 +25,12 @@ async function main() {
     .select('slug, status')
     .in(
       'slug',
-      SITE_PAGE_SEEDS.map((p) => p.slug)
+      SEEDS.map((p) => p.slug)
     )
   if (error) throw error
   const taken = new Map((existing ?? []).map((p) => [p.slug as string, p.status as string]))
 
-  for (const page of SITE_PAGE_SEEDS) {
+  for (const page of SEEDS) {
     const blocks = page.sections.reduce((n, s) => n + (JSON.parse(s.body).root.children as unknown[]).length, 0)
     const summary = `${page.slug}: "${page.title}", ${page.sections.length} sections, ${blocks} blocks`
     if (taken.has(page.slug)) {
@@ -44,6 +48,7 @@ async function main() {
       description: page.description,
       layout: 'sections',
       sections: page.sections,
+      show_toc: page.showToc ?? false,
       body: '',
       status: 'draft',
     })

@@ -7,6 +7,8 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   ArrowUpToLine,
+  Asterisk,
+  AtSign,
   Baseline,
   Bookmark,
   ChevronDown,
@@ -14,15 +16,22 @@ import {
   Clapperboard,
   ClipboardPaste,
   ClipboardType,
+  Clock,
   Copy,
   Footprints,
   ImageIcon,
+  ImagePlus,
+  IndentDecrease,
+  IndentIncrease,
   Info,
   LayoutGrid,
   List,
+  ListChecks,
   ListOrdered,
   MessageCircleQuestion,
   Minus,
+  MoreHorizontal,
+  MousePointerClick,
   PaintBucket,
   PanelTop,
   Pilcrow,
@@ -35,22 +44,29 @@ import {
   Scissors,
   SeparatorHorizontal,
   SquareCode,
-  Square,
+  Tag,
   Trash2,
-  Underline,
+  Trophy,
   Undo2,
+  CalendarDays,
+  ChartNoAxesColumn,
+  CalendarClock as ScheduleIcon,
+  MapPinned,
+  MessageSquareQuote,
+  Gem,
 } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FC, type KeyboardEvent, type ReactNode } from 'react'
+import { Children, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type FC, type KeyboardEvent, type ReactElement, type ReactNode, type RefObject } from 'react'
 
 import { cn } from '@/lib/cn'
 import { CALLOUT_TONE_LIST, CALLOUT_TONES } from '@/lib/richtext/blocks'
 
+import { Popover } from '../../Popover'
 import { Tooltip } from '../../Tooltip'
-import { ColorTool, INK_SWATCHES, TINT_SWATCHES } from './ColorTool'
+import { BorderTool, ColorTool, INK_SWATCHES, TINT_SWATCHES, UnderlineTool } from './ColorTool'
 import { ToolCombobox } from './Combobox'
 import { $clearFormatting, $toggleHeaderRow, TABLE_ACTIONS } from './commands'
 import { CalloutIcon, useBlockDialogs } from './nodes'
-import { FORMATS, LinkTool, TableInsert, ToolButton, bigTool, useClipboard, useEditorTools, useRovingFocus } from './tools'
+import { ALIGNMENTS, BORDER_START, FORMATS, LinkTool, TableInsert, ToolButton, bigTool, useClipboard, useEditorTools, useRovingFocus } from './tools'
 import type { BlockType, FontOption } from './types'
 
 type RibbonTab = 'home' | 'insert' | 'format' | 'table' | 'callout' | 'faq'
@@ -91,15 +107,82 @@ const LabeledButton: FC<{ label: string; icon: ReactNode; danger?: boolean; disa
   </button>
 )
 
-/** A labeled set of controls in a ribbon panel, its name underneath as in a word processor */
-const Group: FC<{ label: string; children: ReactNode; className?: string }> = ({ label, children, className }) => (
-  <div role="group" aria-label={label} className="flex shrink-0 flex-col items-stretch justify-stretch gap-1 border-r border-line px-2 last:border-r-0">
-    <div className={cn('flex min-h-[3.75rem] items-center gap-1', className)}>{children}</div>
-    <span aria-hidden className="text-center text-[0.68rem] font-semibold tracking-wide text-muted">
-      {label}
-    </span>
-  </div>
-)
+/** How many rows of big buttons the panel is using */
+const RowsContext = createContext(1)
+
+/**
+ * A labeled set of controls in a ribbon panel, its name underneath as in a word processor.
+ * With `wraps`, its big buttons take two rows when the panel can't fit them in one.
+ */
+const Group: FC<{ label: string; children: ReactNode; className?: string; wraps?: boolean }> = ({ label, children, className, wraps }) => {
+  const rows = useContext(RowsContext)
+  return (
+    <div role="group" aria-label={label} className="flex shrink-0 flex-col items-stretch justify-between gap-1 border-r border-line px-2 last:border-r-0">
+      <div className={cn('flex min-h-15 items-center gap-1', className, wraps && rows === 2 && 'grid grid-flow-col grid-rows-2 gap-0.5')}>{children}</div>
+      <span aria-hidden className="text-center text-[0.68rem] font-semibold tracking-wide text-muted">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+/** The groups that don't fit in the panel, behind a More button. A tool that returns to the text closes it. */
+const Overflow: FC<{ groups: ReactNode[] }> = ({ groups }) => {
+  const [open, setOpen] = useState(false)
+  const toolsRef = useRef<HTMLDivElement>(null)
+  const onKeyDown = useRovingFocus(toolsRef)
+  return (
+    <div className="ml-auto flex shrink-0 items-center px-1">
+      <Popover
+        open={open}
+        onOpenChange={setOpen}
+        aria-label="More tools"
+        align="end"
+        // Above the site's header, like the color panels that open from it
+        className="z-60 max-w-[min(36rem,calc(100vw-1rem))]"
+        trigger={
+          <button type="button" data-tool onMouseDown={(e) => e.preventDefault()} className={cn(bigTool, 'aria-expanded:bg-fill aria-expanded:text-ink')}>
+            <MoreHorizontal />
+            More
+          </button>
+        }
+      >
+        <div ref={toolsRef} role="toolbar" aria-label="More tools" onKeyDown={onKeyDown} className="flex flex-wrap gap-y-2 *:border-r-0">
+          {groups}
+        </div>
+      </Popover>
+    </div>
+  )
+}
+
+/**
+ * Fits a panel to its width: if its groups don't fit, big buttons take two rows, and if they
+ * still don't, groups go behind More from the end. It's worked out from the start for each
+ * panel and width, before anything's drawn, so everything comes back as the editor gets wider.
+ */
+const useRibbonFit = (panelRef: RefObject<HTMLDivElement | null>, view: string, groups: number) => {
+  const [width, setWidth] = useState(0)
+  const key = `${view}/${width}`
+  const [fit, setFit] = useState({ key, rows: 1, hidden: 0 })
+  const { rows, hidden } = fit.key === key ? fit : { rows: 1, hidden: 0 }
+
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => setWidth(panel.clientWidth))
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [panelRef, view])
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    if (!panel || panel.scrollWidth <= panel.clientWidth) return
+    if (rows === 1) setFit({ key, rows: 2, hidden: 0 })
+    else if (hidden < groups) setFit({ key, rows, hidden: hidden + 1 })
+  }, [panelRef, key, rows, hidden, groups])
+
+  return { rows, hidden }
+}
 
 /** The heading styles, each shown as itself */
 const STYLES: { type: BlockType; label: string; preview: string }[] = [
@@ -107,12 +190,18 @@ const STYLES: { type: BlockType; label: string; preview: string }[] = [
   { type: 'h1', label: 'Heading 1', preview: 'text-[1rem] font-extrabold' },
   { type: 'h2', label: 'Heading 2', preview: 'text-[0.92rem] font-bold' },
   { type: 'h3', label: 'Heading 3', preview: 'text-[0.85rem] font-bold' },
+  { type: 'h4', label: 'Heading 4', preview: 'text-[0.78rem] font-bold' },
+  { type: 'h5', label: 'Heading 5', preview: 'text-[0.72rem] font-bold' },
+  { type: 'h6', label: 'Heading 6', preview: 'text-[0.65rem] font-bold' },
 ]
 
 /**
  * The ribbon: the editor's tools on tabs, in labeled groups, like a word processor's.
- * Home (clipboard, font, paragraph, styles), Insert, Format (colors), and a Table tab that
+ * Home (clipboard, font, paragraph, styles), Insert, Format (colors, layout), and a Table tab that
  * appears while the cursor's in a table. Undo and redo stay at the right of the tabs.
+ *
+ * When a panel doesn't fit, its big buttons take up to two rows, then groups from the end
+ * move behind a More button, and they come back as the editor gets wider.
  *
  * Collapse it to just the tabs (the arrow at the right, or double-click a tab): a tab then
  * opens its panel over the text until a tool is used or focus moves on.
@@ -189,8 +278,10 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
   }
   const block = (type: BlockType) => t.setBlock(type)
   const open = !collapsed || peek
+  // Not in code, which is plain text, or an FAQ's question, a plain line that opens its answer
+  const inLineOff = off || state.inCode || state.faq === 'question'
 
-  const panels: Record<RibbonTab, ReactNode> = {
+  const panels: Record<RibbonTab, ReactElement<{ children: ReactNode }>> = {
     home: (
       <>
         <Group label="Clipboard">
@@ -213,7 +304,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
               onCommit={(text, option) => t.commitFont(text, option)}
             />
             <ToolCombobox
-              label="Text size, in pixels"
+              label="Text size, in points"
               display={String(t.currentSize)}
               inputMode="numeric"
               disabled={noText}
@@ -240,12 +331,13 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
             </ToolButton>
           </div>
         </Group>
-        <Group label="Paragraph">
+        <Group label="Paragraph" wraps>
           <BigButton label="Bullets" icon={<List />} pressed={state.block === 'bullet'} disabled={off} onClick={() => block('bullet')} />
           <BigButton label="Numbers" icon={<ListOrdered />} pressed={state.block === 'number'} disabled={off} onClick={() => block('number')} />
+          <BigButton label="Checklist" icon={<ListChecks />} pressed={state.block === 'check'} disabled={off} onClick={() => block('check')} />
           <BigButton label="Quote" icon={<Quote />} pressed={state.block === 'quote'} disabled={off} onClick={() => block('quote')} />
         </Group>
-        <Group label="Styles">
+        <Group label="Styles" wraps>
           {STYLES.map((s) => (
             <button
               key={s.type}
@@ -256,7 +348,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => block(s.type)}
               className={cn(
-                'flex h-[3.75rem] w-[4.25rem] shrink-0 cursor-pointer flex-col justify-between rounded-lg border border-line bg-surface px-1.5 py-1.5 text-left transition-colors',
+                'flex h-15 w-17 shrink-0 cursor-pointer flex-col justify-between rounded-lg border border-line bg-surface px-1.5 py-1.5 text-left transition-colors',
                 'hover:border-brand-edge focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-40',
                 'aria-pressed:border-brand aria-pressed:bg-brand-tint'
               )}
@@ -279,18 +371,35 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
             onInsert={t.insertTable}
           />
         </Group>
-        <Group label="Media">
+        <Group label="Media" wraps>
           <BigButton label="Image" icon={<ImageIcon />} disabled={off || state.inCode} onClick={blocks.openImage} hint="Upload one, or use its address" />
           <BigButton label="Buttons" icon={<RectangleHorizontal />} disabled={off || state.inCode} onClick={blocks.openButtons} hint="Links styled as buttons, for the next step" />
           <BigButton label="Video" icon={<Clapperboard />} disabled={off || state.inCode} onClick={() => blocks.open('video')} hint="From a YouTube or Vimeo link" />
         </Group>
-        <Group label="Layout">
+        <Group label="Layout" wraps>
           <BigButton label="FAQ" icon={<MessageCircleQuestion />} disabled={off || state.inCode || !!state.faq} onClick={blocks.insertFaq} hint="Questions that open to their answers, typed in place" />
           <BigButton label="Steps" icon={<Footprints />} disabled={off || state.inCode} onClick={() => blocks.open('steps')} hint="Numbered steps, side by side" />
+          <BigButton label="Ranking" icon={<Trophy />} disabled={off || state.inCode} onClick={() => blocks.open('ranking')} hint="A numbered top list, best first" />
           <BigButton label="Cards" icon={<LayoutGrid />} disabled={off || state.inCode} onClick={() => blocks.open('cards')} hint="One card, or a grid of them" />
           <BigButton label="References" icon={<Bookmark />} disabled={off || state.inCode} onClick={() => blocks.open('reference')} hint="Cards for things already on the site, kept up to date" />
+          <BigButton label="Stats" icon={<ChartNoAxesColumn />} disabled={off || state.inCode} onClick={() => blocks.open('stats')} hint="Big numbers in a row, each with what it counts" />
+          <BigButton label="Schedule" icon={<ScheduleIcon />} disabled={off || state.inCode} onClick={() => blocks.open('schedule')} hint="A day’s plan: when, what, and a line about it" />
+          <BigButton label="Testimonial" icon={<MessageSquareQuote />} disabled={off || state.inCode} onClick={() => blocks.open('testimonial')} hint="A quote with who said it" />
         </Group>
-        <Group label="Blocks">
+        <Group label="Live" wraps>
+          <BigButton label="Events" icon={<CalendarDays />} disabled={off || state.inCode} onClick={() => blocks.open('events')} hint="The next CSEG events from PIN, kept current" />
+          <BigButton label="Core values" icon={<Gem />} disabled={off || state.inCode} onClick={() => blocks.open('core-values')} hint="The six values that spell CAMPUS, from the site's own list" />
+          <BigButton label="Map place" icon={<MapPinned />} disabled={off || state.inCode} onClick={() => blocks.open('place')} hint="A small campus map pinned on a place" />
+        </Group>
+        <Group label="In the line" className="grid grid-cols-2 gap-x-1 gap-y-0.5">
+          <LabeledButton label="Chip" icon={<AtSign />} disabled={inLineOff} onClick={() => blocks.open('chip')} />
+          <LabeledButton label="Date or time" icon={<Clock />} disabled={inLineOff} onClick={() => blocks.open('datetime')} />
+          <LabeledButton label="Badge" icon={<Tag />} disabled={inLineOff} onClick={() => blocks.open('badge')} />
+          <LabeledButton label="Footnote" icon={<Asterisk />} disabled={inLineOff} onClick={() => blocks.open('footnote')} />
+          <LabeledButton label="Inline button" icon={<MousePointerClick />} disabled={inLineOff} onClick={() => blocks.open('inline-button')} />
+          <LabeledButton label="Inline image" icon={<ImagePlus />} disabled={inLineOff} onClick={() => blocks.open('inline-image')} />
+        </Group>
+        <Group label="Blocks" wraps>
           <BigButton label="Callout" icon={<Info />} pressed={state.block === 'callout'} disabled={off} onClick={() => block('callout')} hint="A tinted note with an icon" />
           <BigButton label="Divider" icon={<SeparatorHorizontal />} disabled={off || state.inTable} onClick={() => (editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined), editor.focus())} />
           <BigButton label="Code block" icon={<SquareCode />} pressed={state.block === 'code'} disabled={off} onClick={() => block('code')} />
@@ -313,8 +422,21 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
             disabled={noText}
             onPick={(c, live) => t.style({ 'background-color': c }, !live)}
           />
-          <ColorTool labeled label="Underline color" icon={<Underline />} current={state.underlineColor} start="#0039a6" swatches={INK_SWATCHES} disabled={noText} onPick={t.underlineColor} />
-          <ColorTool labeled label="Border color" icon={<Square />} current={state.borderColor} start="#0039a6" swatches={INK_SWATCHES} disabled={noText} onPick={t.borderColor} />
+          <UnderlineTool labeled current={state.underlineColor} type={state.underlineStyle} disabled={noText} onPick={t.underlineColor} onType={t.setUnderlineType} onClear={t.clearUnderline} />
+          <BorderTool labeled current={state.borderColor} type={state.borderStyle} width={state.borderWidth} start={BORDER_START} disabled={noText} onPick={t.borderColor} onType={t.setBorderType} onWidth={t.setBorderWidth} />
+        </Group>
+        <Group label="Layout" className="grid grid-cols-3 gap-0.5">
+          {ALIGNMENTS.map((a) => (
+            <ToolButton key={a.format} label={a.label} pressed={state.align === a.format} disabled={off} onClick={() => t.setAlign(a.format)}>
+              {a.icon}
+            </ToolButton>
+          ))}
+          <ToolButton label="Indent less" disabled={off} onClick={() => t.indent(-1)}>
+            <IndentDecrease />
+          </ToolButton>
+          <ToolButton label="Indent more" disabled={off} onClick={() => t.indent(1)}>
+            <IndentIncrease />
+          </ToolButton>
         </Group>
         <Group label="Clean up">
           <BigButton label="Clear formatting" icon={<RemoveFormatting />} disabled={noText} onClick={() => t.change($clearFormatting)} hint="Marks, font, size, and colors" />
@@ -343,7 +465,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
     ),
     callout: (
       <>
-        <Group label="Kind">
+        <Group label="Kind" wraps>
           {CALLOUT_TONE_LIST.map((tone) => (
             <BigButton key={tone} label={CALLOUT_TONES[tone].label} icon={<CalloutIcon tone={tone} />} pressed={state.callout === tone} disabled={off} onClick={() => t.setCalloutTone(tone)} />
           ))}
@@ -365,11 +487,13 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
       </>
     ),
   }
+  const groups = Children.toArray(panels[shown].props.children)
+  const { rows, hidden } = useRibbonFit(panelRef, open ? shown : 'closed', groups.length)
 
   return (
     <div ref={ribbonRef} className="relative border-b border-line bg-fill/60">
       <div className="flex items-center gap-2 px-2 pt-1">
-        <div role="tablist" aria-label="Ribbon" onKeyDown={onTabKeyDown} className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <div role="tablist" aria-label="Ribbon" onKeyDown={onTabKeyDown} className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-none">
           {tabs.map((x) => {
             const on = x.id === shown
             return (
@@ -434,9 +558,12 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
             role="toolbar"
             aria-label={`${tabs.find((x) => x.id === shown)?.label} tools`}
             onKeyDown={onToolKeyDown}
-            className="flex items-stretch overflow-x-auto py-1.5 h-full [scrollbar-width:thin]"
+            className="flex items-stretch overflow-x-auto py-1.5 scrollbar-thin"
           >
-            {panels[shown]}
+            <RowsContext.Provider value={rows}>
+              {hidden ? groups.slice(0, -hidden) : groups}
+              {hidden ? <Overflow groups={groups.slice(-hidden)} /> : null}
+            </RowsContext.Provider>
           </div>
         </div>
       ) : null}
@@ -445,7 +572,6 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
           <ChevronDown size={12} />
         </span>
       ) : null}
-      {blocks.dialogs}
     </div>
   )
 }

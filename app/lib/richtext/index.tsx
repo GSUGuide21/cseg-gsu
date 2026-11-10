@@ -1,10 +1,15 @@
 import Link from 'next/link'
-import type { CSSProperties, FC, ReactNode } from 'react'
+import { useId, type CSSProperties, type FC, type ReactNode } from 'react'
 
 import { richTextTheme } from '@/components/Form/RichText/theme'
 import { cn } from '@/lib/cn'
+import { EventsBlock, PlaceBlock } from '@/globals/LiveBlocks'
+import { CoreValues } from '@/globals/Page/CoreValues'
+import { CORE_VALUES } from '@/globals/config/club'
 import { ReferenceGrid } from '@/globals/References'
+import { getPlace } from '@/lib/data/places'
 import { parseReferences } from '@/lib/references'
+import { InlineChip } from '@/globals/InlineChip'
 import { PageBlock } from '@/globals/Page'
 import { Markdown } from '@/lib/markdown'
 import { safeHref } from '@/lib/safeUrl'
@@ -32,13 +37,52 @@ import {
   parseVideo,
   StepList,
   Video,
+  RankingList,
+  parseRankings,
+  rankingText,
+  dateTimeText,
+  footnoteMark,
+  InlineBadge,
+  InlineButton,
+  InlineDateTime,
+  InlineImage,
+  InlineText,
+  parseBadgeLabel,
+  parseBadgeTone,
+  parseChipKind,
+  parseChipLabel,
+  parseChipTarget,
+  parseDate,
+  parseDateStyle,
+  parseFootnote,
+  parseInlineAlt,
+  parseInlineButtonStyle,
+  parseInlineHref,
+  parseInlineLabel,
+  parseInlineSrc,
+  parseTime,
+  parseEventCount,
+  parsePlaceId,
+  parsePlaceNote,
+  parseScheduleItems,
+  parseStats,
+  parseTestimonials,
+  parseWhenNone,
+  ScheduleList,
+  scheduleText,
+  StatRow,
+  statText,
+  TestimonialList,
+  testimonialText,
 } from './blocks'
+import { parsePortableText, portableTextRoot } from './portableText'
 
 /**
  * Posts and pages written in the rich text editor, shown on the site. It reads the saved
- * Lexical JSON and makes each element itself, so nothing in it runs: links go only where
- * safeHref allows, and text styles are limited to the ones the editor sets (colors, font,
- * size, border), each value checked. An unknown kind of node shows just its text.
+ * Lexical JSON (or the same content as Portable Text) and makes each element itself, so
+ * nothing in it runs: links go only where safeHref allows, and text styles are limited to
+ * the ones the editor sets (colors, font, size, border), each value checked. An unknown
+ * kind of node shows just its text.
  */
 
 interface SerializedNode {
@@ -47,6 +91,7 @@ interface SerializedNode {
   text?: string
   format?: number | string
   style?: string
+  indent?: number
   tag?: string
   listType?: string
   start?: number
@@ -71,6 +116,25 @@ interface SerializedNode {
   /** An old Eateries block's */
   area?: string
   kind?: string
+  /** An Upcoming events block's */
+  count?: unknown
+  whenNone?: unknown
+  /** A Map place block's */
+  placeId?: unknown
+  note?: unknown
+  /** An inline button's */
+  label?: unknown
+  href?: unknown
+  buttonStyle?: unknown
+  /** A date or time's */
+  date?: unknown
+  time?: unknown
+  dateStyle?: unknown
+  /** A chip's */
+  target?: unknown
+  /** A footnote's place in the document, and the ids it links by, from withFootnotes */
+  number?: number
+  anchor?: string
 }
 
 /** Lexical's text format bits */
@@ -84,7 +148,7 @@ const SUPER = 64
 const HIGHLIGHT = 128
 
 /** The text styles the editor sets, and nothing else */
-const ALLOWED_STYLES = new Set(['color', 'background-color', 'font-family', 'font-size', 'text-decoration-color', 'border-color', 'border-style', 'border-width', 'border-radius', 'padding'])
+const ALLOWED_STYLES = new Set(['color', 'background-color', 'font-family', 'font-size', 'text-decoration-color', 'text-decoration-style', 'border-color', 'border-style', 'border-width', 'border-radius', 'padding'])
 const SAFE_VALUE = /^[#\w\s.,%()'"/+-]{1,120}$/
 
 /** "color: red; font-size: 18px" → { color: 'red', fontSize: '18px' }, keeping only what's allowed */
@@ -109,30 +173,46 @@ const text = (n: SerializedNode, key: string): ReactNode => {
   const f = typeof n.format === 'number' ? n.format : 0
   let el: ReactNode = n.text ?? ''
   const t = richTextTheme.text ?? {}
+  // An underline or strikethrough takes its color and type from the element that draws it
+  const { textDecorationColor, textDecorationStyle, ...style } = safeStyle(n.style) ?? {}
+  const line = textDecorationColor || textDecorationStyle ? { textDecorationColor, textDecorationStyle } : undefined
   if (f & CODE) el = <code className={t.code as string}>{el}</code>
   if (f & BOLD) el = <strong className={t.bold as string}>{el}</strong>
   if (f & ITALIC) el = <em className={t.italic as string}>{el}</em>
-  if (f & UNDERLINE && f & STRIKE) el = <span className={t.underlineStrikethrough as string}>{el}</span>
-  else if (f & UNDERLINE) el = <span className={t.underline as string}>{el}</span>
-  else if (f & STRIKE) el = <s className={t.strikethrough as string}>{el}</s>
+  if (f & UNDERLINE && f & STRIKE) el = <span className={t.underlineStrikethrough as string} style={line}>{el}</span>
+  else if (f & UNDERLINE) el = <span className={t.underline as string} style={line}>{el}</span>
+  else if (f & STRIKE) el = <s className={t.strikethrough as string} style={line}>{el}</s>
   if (f & SUB) el = <sub>{el}</sub>
   if (f & SUPER) el = <sup>{el}</sup>
   if (f & HIGHLIGHT) el = <mark className={cn('text-inherit', t.highlight as string)}>{el}</mark>
-  const style = safeStyle(n.style)
-  return style ? (
-    <span key={key} style={style}>
+  return (
+    <span key={key} style={Object.keys(style).length ? style : undefined}>
       {el}
     </span>
-  ) : (
-    <span key={key}>{el}</span>
   )
 }
 
 const kids = (n: SerializedNode, key: string) => (n.children ?? []).map((c, i) => node(c, `${key}.${i}`))
 
-
 /** A paragraph's or heading's alignment class */
 const alignOf = (n: SerializedNode) => (typeof n.format === 'string' ? ALIGN[n.format] : undefined)
+
+/** A block's indent, by Lexical's step of 40px, as the editor draws it */
+const indentOf = (n: SerializedNode): CSSProperties | undefined => (typeof n.indent === 'number' && n.indent > 0 ? { paddingInlineStart: `${Math.min(n.indent, 10) * 40}px` } : undefined)
+
+/** A list item: a nested list's has no bullet, and a checklist's says aloud whether it's done */
+const isNestedItem = (n: SerializedNode) => n.children?.length === 1 && n.children[0].type === 'list'
+
+const listItem = (n: SerializedNode, key: string, check: boolean, value?: number) => {
+  const list = richTextTheme.list as Record<string, string> & { nested: { listitem: string } }
+  const nested = isNestedItem(n)
+  return (
+    <li key={key} value={value} className={cn(list.listitem, nested ? list.nested.listitem : check && (n.checked ? list.listitemChecked : list.listitemUnchecked), alignOf(n))}>
+      {check && !nested ? <span className="sr-only">{n.checked ? 'Done: ' : 'Not done: '}</span> : null}
+      {kids(n, key)}
+    </li>
+  )
+}
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
 const HEADINGS: readonly string[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
@@ -140,6 +220,8 @@ const HEADINGS: readonly string[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
 type NodeRenderer = (n: SerializedNode, key: string) => ReactNode
 
 /** How each kind of node is drawn: a renderer, or the name of a kind drawn the same way */
+const WORDS_PER_MINUTE = 220
+
 export type RichTextNodeType = Record<string, NodeRenderer | string>
 
 const NODE_TYPES: RichTextNodeType = {
@@ -148,42 +230,39 @@ const NODE_TYPES: RichTextNodeType = {
   linebreak: (_, key) => <br key={key} />,
   tab: (_, key) => <span key={key}>{'\t'}</span>,
   paragraph: (n, key) => (
-    <p key={key} className={cn(richTextTheme.paragraph, alignOf(n))}>
+    <p key={key} className={cn(richTextTheme.paragraph, alignOf(n))} style={indentOf(n)}>
       {kids(n, key)}
     </p>
   ),
   heading: (n, key) => {
     const H = (HEADINGS.includes(n.tag ?? '') ? n.tag : 'h3') as HeadingTag
     return (
-      <H key={key} className={cn((richTextTheme.heading as Record<string, string>)[H], alignOf(n))}>
+      <H key={key} id={H === 'h2' ? sectionId(nodeText(n)) || undefined : undefined} className={cn((richTextTheme.heading as Record<string, string>)[H], alignOf(n))} style={indentOf(n)}>
         {kids(n, key)}
       </H>
     )
   },
   quote: (n, key) => (
-    <blockquote key={key} className={richTextTheme.quote}>
+    <blockquote key={key} className={cn(richTextTheme.quote, alignOf(n))} style={indentOf(n)}>
       {kids(n, key)}
     </blockquote>
   ),
   list: (n, key) => {
     const ordered = n.listType === 'number'
+    const check = n.listType === 'check'
     const L = ordered ? 'ol' : 'ul'
     const list = richTextTheme.list as Record<string, string>
+    // The item holding a nested list still counts as one in an <ol>, so the items after it say their number
+    let count = typeof n.start === 'number' ? n.start : 1
     return (
-      <L key={key} start={ordered && n.start && n.start !== 1 ? n.start : undefined} className={ordered ? list.ol : list.ul}>
-        {kids(n, key)}
+      <L key={key} start={ordered && n.start && n.start !== 1 ? n.start : undefined} className={ordered ? list.ol : check ? list.checklist : list.ul}>
+        {(n.children ?? []).map((c, i) =>
+          c.type === 'listitem' ? listItem(c, `${key}.${i}`, check, ordered && !isNestedItem(c) ? count++ : undefined) : node(c, `${key}.${i}`)
+        )}
       </L>
     )
   },
-  listitem: (n, key) => {
-    // A nested list sits in an item of its own, with no bullet
-    const nested = n.children?.length === 1 && n.children[0].type === 'list'
-    return (
-      <li key={key} className={cn((richTextTheme.list as Record<string, string>).listitem, nested && 'list-none')}>
-        {kids(n, key)}
-      </li>
-    )
-  },
+  listitem: (n, key) => listItem(n, key, false),
   code: (n, key) => (
     <pre key={key} className={richTextTheme.code}>
       <code>{kids(n, key)}</code>
@@ -285,6 +364,57 @@ const NODE_TYPES: RichTextNodeType = {
     )
   },
   tablecaption: (n, key) => <caption key={key}>{kids(n, key)}</caption>,
+  ranking: (n, key) => {
+    const items = parseRankings(n.items)
+    return items.length ? <RankingList key={key} items={items} /> : null
+  },
+  stats: (n, key) => {
+    const items = parseStats(n.items)
+    return items.length ? <StatRow key={key} items={items} /> : null
+  },
+  schedule: (n, key) => {
+    const items = parseScheduleItems(n.items)
+    return items.length ? <ScheduleList key={key} items={items} /> : null
+  },
+  testimonial: (n, key) => {
+    const items = parseTestimonials(n.items)
+    return items.length ? <TestimonialList key={key} items={items} /> : null
+  },
+  'inline-button': (n, key) => {
+    const label = parseInlineLabel(n.label)
+    const href = parseInlineHref(n.href)
+    return label && href ? <InlineButton key={key} label={label} href={href} buttonStyle={parseInlineButtonStyle(n.buttonStyle)} /> : null
+  },
+  'inline-image': (n, key) => {
+    const src = parseInlineSrc(n.src)
+    return src ? <InlineImage key={key} src={src} alt={parseInlineAlt(n.alt)} /> : null
+  },
+  badge: (n, key) => {
+    const label = parseBadgeLabel(n.label)
+    return label ? <InlineBadge key={key} label={label} tone={parseBadgeTone(n.tone)} /> : null
+  },
+  datetime: (n, key) => {
+    const date = parseDate(n.date)
+    return date ? <InlineDateTime key={key} date={date} time={parseTime(n.time)} dateStyle={parseDateStyle(n.dateStyle)} /> : null
+  },
+  footnote: (n, key) =>
+    n.number ? (
+      <sup key={key} id={`${n.anchor}-ref-${n.number}`} className="scroll-mt-24">
+        <a href={`#${n.anchor}-note-${n.number}`} aria-label={`Footnote ${n.number}`} className={footnoteMark}>
+          {n.number}
+        </a>
+      </sup>
+    ) : null,
+  // Live, like the blocks below, but with its name from when it was picked for when it's gone
+  chip: (n, key) => <InlineChip key={key} kind={parseChipKind(n.kind)} target={parseChipTarget(n.target)} label={parseChipLabel(n.label)} />,
+  // Live from what the page provides (SiteContentProvider): the next events, and the place as the map has it now
+  events: (n, key) => <EventsBlock key={key} count={parseEventCount(n.count)} whenNone={parseWhenNone(n.whenNone)} />,
+  // The values from the site's own list, as the About page draws them
+  'core-values': (_, key) => <CoreValues key={key} />,
+  place: (n, key) => {
+    const placeId = parsePlaceId(n.placeId)
+    return placeId ? <PlaceBlock key={key} placeId={placeId} note={parsePlaceNote(n.note)} /> : null
+  },
   // Something newer than this renderer: its words, at least
   default: (n, key) => (n.children ? <span key={key}>{kids(n, key)}</span> : n.text ? <span key={key}>{n.text}</span> : null),
 }
@@ -304,6 +434,8 @@ function node(n: SerializedNode, key: string): ReactNode {
 /** The saved editor state, or null when it isn't one (markdown from before the editor) */
 export const parseRichText = (source: string): SerializedNode | null => {
   const s = source.trim()
+  const portable = parsePortableText(s)
+  if (portable) return portableTextRoot(portable) as unknown as SerializedNode
   if (!s.startsWith('{')) return null
   try {
     const json = JSON.parse(s) as { root?: SerializedNode }
@@ -313,47 +445,123 @@ export const parseRichText = (source: string): SerializedNode | null => {
   }
 }
 
+/** How one kind of node turns into words */
+export type NodeParser = (n: SerializedNode) => string
+
+/**
+ * Kinds whose children are separate lines: a document's blocks, a list's items, an FAQ's
+ * entries, a table's rows. Everything else (a paragraph's words, a cell's) runs together.
+ */
+const LINE_PER_CHILD = new Set(['root', 'list', 'tablerow', 'table', 'faq', 'faq-item', 'faq-answer'])
+
+/** A node's children's words, a line each where the kind calls for it */
+const childrenText: NodeParser = (n) => (n.children ?? []).map(nodeText).join(LINE_PER_CHILD.has(n.type) ? '\n' : '')
+
+/**
+ * The kinds whose words aren't just their children's. An image's caption is part of what's
+ * written, as are a list block's words; button labels aren't (nor are References: what they
+ * point at is written elsewhere).
+ */
+const PLAIN_TEXT: Record<string, NodeParser> = {
+  text: (n) => n.text ?? '',
+  'code-highlight': (n) => n.text ?? '',
+  linebreak: () => '\n',
+  image: (n) => parseCaption(n.caption),
+  // Saved as data, before FAQs were typed in place; typed-in ones are their children
+  faq: (n) =>
+    n.items !== undefined
+      ? parseFaq(n.items)
+          .map((f) => `${f.q}\n${inlinePlain(f.a)}`)
+          .join('\n')
+      : childrenText(n),
+  steps: (n) =>
+    parseSteps(n.items)
+      .map((s) => `${s.title}\n${inlinePlain(s.text)}`)
+      .join('\n'),
+  cards: (n) =>
+    parseCards(n.items)
+      .map((c) => `${c.title}\n${inlinePlain(c.text)}`)
+      .join('\n'),
+  ranking: (n) =>
+    parseRankings(n.items)
+      .map(rankingText)
+      .join('\n'),
+  stats: (n) => parseStats(n.items).map(statText).join('\n'),
+  schedule: (n) => parseScheduleItems(n.items).map(scheduleText).join('\n'),
+  testimonial: (n) => parseTestimonials(n.items).map(testimonialText).join('\n'),
+  'core-values': () => CORE_VALUES.map((v) => `${v.title}: ${v.body}`).join('\n'),
+  place: (n) => [getPlace(parsePlaceId(n.placeId))?.name, inlinePlain(parsePlaceNote(n.note))].filter(Boolean).join('\n'),
+  // These sit in a sentence, so their words run on in it; a footnote's are read at the end of the page
+  'inline-button': (n) => parseInlineLabel(n.label),
+  badge: (n) => parseBadgeLabel(n.label),
+  chip: (n) => parseChipLabel(n.label),
+  datetime: (n) => dateTimeText({ date: parseDate(n.date), time: parseTime(n.time), dateStyle: parseDateStyle(n.dateStyle) }),
+}
+
+function nodeText(n: SerializedNode): string {
+  return (PLAIN_TEXT[n.type] ?? childrenText)(n)
+}
+
+/** How long something takes to read, in minutes, for "3 min read" */
+export const readingMinutes = (text: string) => Math.max(1, Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / WORDS_PER_MINUTE))
+
+/** A document's main headings, with the #link each gets when it's shown, for an "On this page" list */
+export const documentHeadings = (source: string) => {
+  const seen = new Set<string>()
+  return (parseRichText(source)?.children ?? []).flatMap((n) => {
+    const text = n.type === 'heading' && n.tag === 'h2' ? nodeText(n).trim() : ''
+    const id = sectionId(text)
+    if (!id || seen.has(id)) return []
+    seen.add(id)
+    return [{ id, text }]
+  })
+}
+
 /** Just the words, for a word count or a summary */
 export const plainText = (source: string): string => {
   const root = parseRichText(source)
   if (!root) return source
-  const walk = (n: SerializedNode): string =>
-    n.type === 'text' || n.type === 'code-highlight'
-      ? (n.text ?? '')
-      : n.type === 'linebreak'
-        ? '\n'
-        : // An image's caption is part of what's written, as are a list block's words; button labels aren't
-          n.type === 'image'
-          ? parseCaption(n.caption)
-          : n.type === 'faq' && n.items !== undefined
-            ? parseFaq(n.items)
-                .map((f) => `${f.q}\n${inlinePlain(f.a)}`)
-                .join('\n')
-            : n.type === 'steps'
-              ? parseSteps(n.items)
-                  .map((s) => `${s.title}\n${inlinePlain(s.text)}`)
-                  .join('\n')
-              : n.type === 'cards'
-                ? parseCards(n.items)
-                    .map((c) => `${c.title}\n${inlinePlain(c.text)}`)
-                    .join('\n')
-                : (n.children ?? [])
-                    .map(walk)
-                    .join(
-                      ['paragraph', 'heading', 'quote', 'callout', 'listitem', 'code', 'tablecell', 'faq-question'].includes(n.type)
-                        ? ''
-                        : ['root', 'list', 'tablerow', 'table', 'faq', 'faq-item', 'faq-answer'].includes(n.type)
-                          ? '\n'
-                          : ''
-                    )
-  return walk(root)
+  return nodeText(root)
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
-export const RichContent: FC<{ root: SerializedNode; className?: string }> = ({ root, className }) => (
-  <div className={cn('text-[1rem] text-ink-soft [&>*:first-child]:mt-0', className)}>{kids(root, 'r')}</div>
-)
+/** The document with each footnote numbered in reading order, and their notes in that order */
+const withFootnotes = (root: SerializedNode, anchor: string) => {
+  const notes: string[] = []
+  const walk = (n: SerializedNode): SerializedNode => {
+    if (n.type === 'footnote') {
+      const note = parseFootnote(n.note)
+      if (note) notes.push(note)
+      return note ? { ...n, number: notes.length, anchor } : n
+    }
+    return n.children ? { ...n, children: n.children.map(walk) } : n
+  }
+  return { numbered: walk(root), notes }
+}
+
+export const RichContent: FC<{ root: SerializedNode; className?: string }> = ({ root, className }) => {
+  // Its own ids, so two pieces of writing on a page (a page's sections) can't link into each other
+  const anchor = useId()
+  const { numbered, notes } = withFootnotes(root, anchor)
+  return (
+    <div className={cn('text-[1rem] text-ink-soft [&>*:first-child]:mt-0', className)}>
+      {kids(numbered, 'r')}
+      {notes.length ? (
+        <ol aria-label="Footnotes" className="mt-8 list-decimal border-t border-line pt-4 pl-6 text-[0.88rem] text-muted">
+          {notes.map((note, i) => (
+            <li key={i} id={`${anchor}-note-${i + 1}`} className="my-1 scroll-mt-24">
+              <InlineText text={note} />{' '}
+              <a href={`#${anchor}-ref-${i + 1}`} aria-label={`Back to footnote ${i + 1} in the text`} className={footnoteMark}>
+                ↩
+              </a>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  )
+}
 
 /** A post's or page's body, whichever way it was written: the rich text editor, or markdown */
 export const DocumentBody: FC<{ source: string; className?: string }> = ({ source, className }) => {
@@ -375,18 +583,23 @@ export interface PageSectionContent {
  * the title with the brand bar, the subtitle under it, then its writing), with a #link: its
  * own, or one from its title (made unique when two match).
  */
-export const PageSections: FC<{ sections: readonly PageSectionContent[]; className?: string }> = ({ sections, className }) => {
+/** Each section's #link, in order: its own, or one from its title, made unique when two match */
+export const sectionIds = (sections: readonly Pick<PageSectionContent, 'title' | 'anchor'>[]): string[] => {
   const used = new Map<string, number>()
-  const idFor = (title: string, anchor?: string) => {
+  return sections.map(({ title, anchor }) => {
     const base = sectionId(anchor || title) || 'section'
     const n = (used.get(base) ?? 0) + 1
     used.set(base, n)
     return n > 1 ? `${base}-${n}` : base
-  }
+  })
+}
+
+export const PageSections: FC<{ sections: readonly PageSectionContent[]; className?: string }> = ({ sections, className }) => {
+  const ids = sectionIds(sections)
   return (
     <div className={cn('flex flex-col gap-[clamp(3rem,6vw,4.5rem)]', className)}>
       {sections.map((s, i) => (
-        <PageBlock key={i} id={idFor(s.title, s.anchor)} title={s.title || 'Untitled section'} description={s.subtitle || undefined}>
+        <PageBlock key={i} id={ids[i]} title={s.title || 'Untitled section'} description={s.subtitle || undefined}>
           {s.body.trim() ? <DocumentBody source={s.body} className="max-w-3xl" /> : null}
         </PageBlock>
       ))}

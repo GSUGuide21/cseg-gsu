@@ -3,23 +3,37 @@
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/extension'
 import { FORMAT_TEXT_COMMAND, REDO_COMMAND, UNDO_COMMAND } from 'lexical'
 import {
+  Asterisk,
+  AtSign,
   Baseline,
   Bookmark,
   Clapperboard,
+  Clock,
+  AlignLeft,
   Footprints,
   ImageIcon,
+  ImagePlus,
+  IndentDecrease,
+  IndentIncrease,
   LayoutGrid,
   MessageCircleQuestion,
   Minus,
   MoreHorizontal,
+  MousePointerClick,
   PaintBucket,
   Plus,
   RectangleHorizontal,
   Redo2,
   SeparatorHorizontal,
-  Square,
-  Underline,
+  Tag,
+  Trophy,
   Undo2,
+  CalendarDays,
+  ChartNoAxesColumn,
+  CalendarClock as ScheduleIcon,
+  MapPinned,
+  MessageSquareQuote,
+  Gem,
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FC, type ReactNode } from 'react'
 
@@ -27,11 +41,11 @@ import { CALLOUT_TONE_LIST, CALLOUT_TONES } from '@/lib/richtext/blocks'
 
 import { ActionMenu } from '../../ActionMenu'
 import { Popover } from '../../Popover'
-import { ColorTool, INK_SWATCHES, TINT_SWATCHES } from './ColorTool'
+import { BorderTool, ColorTool, INK_SWATCHES, TINT_SWATCHES, UnderlineTool } from './ColorTool'
 import { ToolCombobox } from './Combobox'
 import { TABLE_ACTIONS } from './commands'
 import { CalloutIcon, useBlockDialogs } from './nodes'
-import { BLOCKS, Divider, FORMATS, LinkTool, MenuButton, TableInsert, ToolButton, isApple, useEditorTools, useRovingFocus } from './tools'
+import { ALIGNMENTS, BLOCKS, BORDER_START, Divider, FORMATS, LinkTool, MenuButton, TableInsert, ToolButton, isApple, useEditorTools, useRovingFocus } from './tools'
 import type { FontOption } from './types'
 
 interface ToolGroup {
@@ -52,6 +66,8 @@ const Overflow: FC<{ groups: ToolGroup[] }> = ({ groups }) => {
       onOpenChange={setOpen}
       aria-label="More formatting"
       align="end"
+      // Above the site's header, like the color panels that open from it
+      className="z-60"
       trigger={
         <button
           type="button"
@@ -85,7 +101,7 @@ const Overflow: FC<{ groups: ToolGroup[] }> = ({ groups }) => {
  * button, and come back as the editor gets wider.
  */
 export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolean }> = ({ fonts, sizes, disabled }) => {
-  const { setLink, editor, state, canUndo, canRedo, mod, setBlock, setCalloutTone, faq, style, underlineColor, borderColor, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText } = useEditorTools({ fonts, sizes, disabled })
+  const { setLink, editor, state, canUndo, canRedo, mod, setBlock, setAlign, indent, setCalloutTone, faq, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText } = useEditorTools({ fonts, sizes, disabled })
   const blocks = useBlockDialogs()
   const barRef = useRef<HTMLDivElement>(null)
   const onKeyDown = useRovingFocus(barRef)
@@ -170,7 +186,7 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
               <Minus />
             </ToolButton>
             <ToolCombobox
-              label="Text size, in pixels"
+              label="Text size, in points"
               display={String(currentSize)}
               inputMode="numeric"
               disabled={noText}
@@ -208,6 +224,22 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
       ),
     },
     {
+      key: 'layout',
+      node: (
+        <ActionMenu
+          label="Alignment and indent"
+          align="start"
+          trigger={<MenuButton label="Alignment and indent" display={ALIGNMENTS.find((a) => a.format === state.align)?.icon ?? <AlignLeft />} disabled={off} />}
+          items={[
+            ...ALIGNMENTS.map((a) => ({ label: a.label, icon: a.icon, description: a.format === state.align ? 'Current' : undefined, onSelect: () => setAlign(a.format) })),
+            'separator' as const,
+            { label: 'Indent less', icon: <IndentDecrease />, onSelect: () => indent(-1) },
+            { label: 'Indent more', icon: <IndentIncrease />, onSelect: () => indent(1) },
+          ]}
+        />
+      ),
+    },
+    {
       key: 'colors',
       node: (
         <>
@@ -222,8 +254,8 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
             disabled={noText}
             onPick={(c, live) => style({ 'background-color': c }, !live)}
           />
-          <ColorTool label="Underline color" icon={<Underline />} current={state.underlineColor} start="#0039a6" swatches={INK_SWATCHES} disabled={noText} onPick={underlineColor} />
-          <ColorTool label="Border color" icon={<Square />} current={state.borderColor} start="#0039a6" swatches={INK_SWATCHES} disabled={noText} onPick={borderColor} />
+          <UnderlineTool current={state.underlineColor} type={state.underlineStyle} disabled={noText} onPick={underlineColor} onType={setUnderlineType} onClear={clearUnderline} />
+          <BorderTool current={state.borderColor} type={state.borderStyle} width={state.borderWidth} start={BORDER_START} disabled={noText} onPick={borderColor} onType={setBorderType} onWidth={setBorderWidth} />
         </>
       ),
     },
@@ -242,8 +274,27 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
               'separator',
               { label: 'FAQ', icon: <MessageCircleQuestion />, disabled: !!state.faq, onSelect: blocks.insertFaq },
               { label: 'Steps', icon: <Footprints />, onSelect: () => blocks.open('steps') },
+              { label: 'Ranking', icon: <Trophy />, onSelect: () => blocks.open('ranking') },
               { label: 'Cards', icon: <LayoutGrid />, onSelect: () => blocks.open('cards') },
               { label: 'References', icon: <Bookmark />, onSelect: () => blocks.open('reference') },
+              { label: 'Stats', icon: <ChartNoAxesColumn />, onSelect: () => blocks.open('stats') },
+              { label: 'Schedule', icon: <ScheduleIcon />, onSelect: () => blocks.open('schedule') },
+              { label: 'Testimonial', icon: <MessageSquareQuote />, onSelect: () => blocks.open('testimonial') },
+              'separator',
+              { label: 'Upcoming events', icon: <CalendarDays />, onSelect: () => blocks.open('events') },
+              { label: 'Core values', icon: <Gem />, onSelect: () => blocks.open('core-values') },
+              { label: 'Map place', icon: <MapPinned />, onSelect: () => blocks.open('place') },
+              {
+                label: 'In the line',
+                items: [
+                  { label: 'Chip', icon: <AtSign />, onSelect: () => blocks.open('chip') },
+                  { label: 'Date or time', icon: <Clock />, onSelect: () => blocks.open('datetime') },
+                  { label: 'Badge', icon: <Tag />, onSelect: () => blocks.open('badge') },
+                  { label: 'Footnote', icon: <Asterisk />, onSelect: () => blocks.open('footnote') },
+                  { label: 'Inline button', icon: <MousePointerClick />, onSelect: () => blocks.open('inline-button') },
+                  { label: 'Inline image', icon: <ImagePlus />, onSelect: () => blocks.open('inline-image') },
+                ].map((item) => ({ ...item, disabled: state.faq === 'question' })),
+              },
             ]}
           />
           <TableInsert
@@ -325,7 +376,6 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
         </Fragment>
       ))}
       {fit < groups.length ? <Overflow groups={groups.slice(fit)} /> : null}
-      {blocks.dialogs}
     </div>
   )
 }

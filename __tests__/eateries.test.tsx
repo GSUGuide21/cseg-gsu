@@ -2,10 +2,11 @@ import '@testing-library/jest-dom'
 import { render, screen, within } from '@testing-library/react'
 
 import { SiteContentProvider } from '@/globals/SiteContent'
-import { parseEatery } from '@/lib/dashboard/validate'
+import { toCsv } from '@/lib/csv'
+import { parseClosure, parseEatery, parseGroups, parseResource } from '@/lib/dashboard/validate'
 import { EATERIES } from '@/lib/data/eats'
 import { getPlace, placesWithEateries } from '@/lib/data/places'
-import { eateryFromRow, eateryToRow, parseSchedule, type Eatery } from '@/lib/eateries'
+import { applyClosures, BUILT_IN_AREAS, eateryFromRow, eateryToRow, parseSchedule, type Eatery } from '@/lib/eateries'
 import { DocumentBody, plainText } from '@/lib/richtext'
 import { hasLiveBlock } from '@/lib/richtext/blocks'
 
@@ -34,7 +35,7 @@ describe('References to an area’s eateries', () => {
 
   it('shows an area’s eateries live, with their Open now badge and map link', () => {
     render(
-      <SiteContentProvider content={{ eateries: [tacos, hall], posts: [], pages: [] }}>
+      <SiteContentProvider content={{ eateries: [tacos, hall], areas: BUILT_IN_AREAS, resources: [], resourceGroups: [], posts: [], pages: [] }}>
         <DocumentBody source={block('park-place')} />
       </SiteContentProvider>
     )
@@ -46,14 +47,14 @@ describe('References to an area’s eateries', () => {
 
   it('shows only dining halls, or only the rest, when asked', () => {
     const { rerender } = render(
-      <SiteContentProvider content={{ eateries: [tacos, hall, { ...tacos, id: 'cafe', name: 'Campus Café', area: 'campus' }], posts: [], pages: [] }}>
+      <SiteContentProvider content={{ eateries: [tacos, hall, { ...tacos, id: 'cafe', name: 'Campus Café', area: 'campus' }], areas: BUILT_IN_AREAS, resources: [], resourceGroups: [], posts: [], pages: [] }}>
         <DocumentBody source={block('campus', 'dining-halls')} />
       </SiteContentProvider>
     )
     expect(screen.getByText('Big Hall')).toBeInTheDocument()
     expect(screen.queryByText('Campus Café')).not.toBeInTheDocument()
     rerender(
-      <SiteContentProvider content={{ eateries: [tacos, hall, { ...tacos, id: 'cafe', name: 'Campus Café', area: 'campus' }], posts: [], pages: [] }}>
+      <SiteContentProvider content={{ eateries: [tacos, hall, { ...tacos, id: 'cafe', name: 'Campus Café', area: 'campus' }], areas: BUILT_IN_AREAS, resources: [], resourceGroups: [], posts: [], pages: [] }}>
         <DocumentBody source={block('campus', 'others')} />
       </SiteContentProvider>
     )
@@ -139,5 +140,78 @@ describe('an eatery from the dashboard', () => {
     expect(bad.ok).toBe(false)
     if (bad.ok) return
     expect(Object.keys(bad.errors).sort()).toEqual(['area', 'lat', 'locations', 'name'])
+  })
+})
+
+describe('closures and areas', () => {
+  const winter = { label: 'winter break', starts_on: '2026-12-15', ends_on: '2027-01-10', eateries: ['taco-spot'] }
+
+  it('closes the eateries a closure covers, only while it’s on', () => {
+    const during = applyClosures([tacos, hall], [winter], '2026-12-20')
+    expect(during[0]).toMatchObject({ status: 'Closed for winter break through Jan 10' })
+    expect(during[1]).toBe(hall)
+    // Before and after, nothing changes; the last day is still closed
+    expect(applyClosures([tacos], [winter], '2026-12-14')[0]).toBe(tacos)
+    expect(applyClosures([tacos], [winter], '2027-01-11')[0]).toBe(tacos)
+    expect(applyClosures([tacos], [winter], '2027-01-10')[0].status).toMatch(/^Closed/)
+  })
+
+  it('reads as closed on the map too: hours never open, the notice first', () => {
+    const [closed] = applyClosures([{ ...tacos, locations: [{ id: 'cart', label: 'Cart', lat: 33.75, lng: -84.38, schedule: tacos.schedule }] }], [winter], '2026-12-20')
+    expect(closed.schedule).toEqual([])
+    expect(closed.locations?.[0].schedule).toEqual([])
+    const pin = placesWithEateries([closed]).find((p) => p.id === 'cart')!
+    expect(pin.description).toMatch(/^Closed for winter break through Jan 10\./)
+  })
+
+  it('reads a closure from its form, turning away a backwards range and no eateries', () => {
+    expect(parseClosure(form({ label: 'Thanksgiving', dates: ['2026-11-25', '2026-11-29'], eateries: ['a', 'a', 'b'] }))).toEqual({
+      ok: true,
+      data: { label: 'Thanksgiving', starts_on: '2026-11-25', ends_on: '2026-11-29', eateries: ['a', 'b'] },
+    })
+    const bad = parseClosure(form({ label: '', dates: ['2026-11-29', '2026-11-25'] }))
+    expect(bad.ok === false && Object.keys(bad.errors).sort()).toEqual(['dates', 'eateries', 'label'])
+  })
+
+  it('reads the areas in order, keeping slugs, making new ones from names, and refusing repeats', () => {
+    const parsed = parseGroups([{ slug: 'campus', title: 'On campus (Downtown)' }, { title: 'Summerhill', description: ' Near the stadium ' }])
+    expect(parsed).toEqual({
+      ok: true,
+      data: [
+        { slug: 'campus', title: 'On campus (Downtown)', description: null, sort: 10 },
+        { slug: 'summerhill', title: 'Summerhill', description: 'Near the stadium', sort: 20 },
+      ],
+    })
+    const twice = parseGroups([{ title: 'Midtown' }, { title: 'Midtown' }, { title: ' ' }])
+    expect(twice.ok === false && twice.errors).toEqual({ 'area-1': 'Another area has this name.', 'area-2': 'Give it a name.' })
+  })
+
+  it('lets References follow a renamed or added area', () => {
+    const areas = [{ slug: 'park-place', title: 'Park Place & Edgewood' }, { slug: 'summerhill', title: 'Summerhill' }]
+    render(
+      <SiteContentProvider content={{ eateries: [tacos, { ...tacos, id: 'wings', name: 'Wing Spot', area: 'summerhill' }], areas, resources: [], resourceGroups: [], posts: [], pages: [] }}>
+        <DocumentBody source={saved({ type: 'reference', version: 1, items: [{ kind: 'eateries', ref: 'summerhill' }, { kind: 'eateries', ref: 'campus' }] })} />
+      </SiteContentProvider>
+    )
+    expect(screen.getByRole('heading', { name: 'Wing Spot' })).toBeInTheDocument()
+    // An area that's gone draws nothing
+    expect(screen.queryByRole('heading', { name: 'Taco Spot' })).not.toBeInTheDocument()
+  })
+})
+
+describe('a resource from the dashboard', () => {
+  it('reads one, its slug from its name, and turns away a link that isn’t one', () => {
+    expect(parseResource(form({ label: 'Panther Pantry', group_slug: 'money', href: 'https://pantry.gsu.edu', published: 'on' }), null)).toMatchObject({
+      ok: true,
+      data: { slug: 'panther-pantry', group_slug: 'money', href: 'https://pantry.gsu.edu', place_id: null, published: true },
+    })
+    const bad = parseResource(form({ label: 'Pantry', href: 'javascript:alert(1)' }), 'panther-pantry')
+    expect(bad.ok === false && Object.keys(bad.errors).sort()).toEqual(['group_slug', 'href'])
+  })
+})
+
+describe('spreadsheets from the dashboard', () => {
+  it('quotes every cell, and keeps formula-looking text as text', () => {
+    expect(toCsv(['Name', 'Note'], [['Ana "AJ" Lee', '=HYPERLINK("x")'], ['-5', null]])).toBe('"Name","Note"\r\n"Ana ""AJ"" Lee","\'=HYPERLINK(""x"")"\r\n"\'-5",""')
   })
 })

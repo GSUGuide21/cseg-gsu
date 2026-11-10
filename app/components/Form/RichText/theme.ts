@@ -9,14 +9,24 @@ export const richTextTheme: EditorThemeClasses = {
     h1: 'mt-5 mb-2 text-[1.8rem] leading-tight font-extrabold text-ink first:mt-0',
     h2: 'mt-4 mb-2 text-[1.4rem] leading-snug font-bold text-ink first:mt-0',
     h3: 'mt-3 mb-1.5 text-[1.15rem] leading-snug font-bold text-ink first:mt-0',
+    h4: 'mt-3 mb-1 text-[1rem] leading-snug font-bold text-ink first:mt-0',
+    h5: 'mt-2 mb-1 text-[0.88rem] leading-snug font-bold text-ink first:mt-0',
+    h6: 'mt-2 mb-1 text-[0.8rem] leading-snug font-bold text-ink first:mt-0',
   },
   quote: 'my-3 border-l-4 border-brand-edge pl-4 text-ink-soft italic',
   list: {
     ul: 'my-2 list-disc pl-6',
     ol: 'my-2 list-decimal pl-6',
+    checklist: 'my-2 list-none pl-0',
     listitem: 'my-0.5 leading-[1.7]',
-    // A nested list's own item, with no bullet of its own
-    nested: { listitem: 'list-none' },
+    // Lexical takes a click on ::before as a click on the box, so the box has to be there
+    // The arrow keys can land on an item, for Space to tick it
+    listitemUnchecked:
+      'relative list-none rounded-sm pl-7 outline-none focus-visible:outline-2 focus-visible:outline-brand before:absolute before:top-[0.3em] before:left-0 before:size-[1.1em] before:rounded before:border-2 before:border-line before:bg-surface',
+    listitemChecked:
+      "relative list-none rounded-sm pl-7 text-muted line-through outline-none focus-visible:outline-2 focus-visible:outline-brand before:absolute before:top-[0.3em] before:left-0 before:size-[1.1em] before:rounded before:border-2 before:border-brand before:bg-brand after:absolute after:top-[0.42em] after:left-[0.38em] after:h-[0.62em] after:w-[0.34em] after:rotate-45 after:border-r-2 after:border-b-2 after:border-white after:content-['']",
+    // A nested list's own item, with no bullet (or box) of its own
+    nested: { listitem: 'list-none pl-0! before:hidden after:hidden' },
   },
   text: {
     bold: 'font-bold',
@@ -43,11 +53,22 @@ export const richTextTheme: EditorThemeClasses = {
 
 export const DEFAULT_FONTS: FontOption[] = [
   { label: 'Default', value: '' },
+  // The site's own, which every page already loads
   { label: 'Montserrat', value: 'var(--font-montserrat), system-ui, sans-serif' },
+  { label: 'Yellowtail', value: 'var(--font-yellowtail), cursive' },
+  // On readers' own devices, so each costs nothing to load and falls back to its nearest kin
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Tahoma', value: 'Tahoma, Verdana, sans-serif' },
+  { label: 'Trebuchet', value: '"Trebuchet MS", Helvetica, sans-serif' },
   { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
   { label: 'Times', value: '"Times New Roman", Times, serif' },
-  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Garamond', value: 'Garamond, Baskerville, "Times New Roman", serif' },
+  { label: 'Palatino', value: '"Palatino Linotype", Palatino, "Book Antiqua", serif' },
+  { label: 'Courier', value: '"Courier New", Courier, monospace' },
   { label: 'Monospace', value: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
 ]
 
-export const DEFAULT_SIZES = [12, 14, 16, 18, 20, 24, 28, 32, 40]
+/** In points, as a word processor's */
+export const DEFAULT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72]

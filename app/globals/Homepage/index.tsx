@@ -1,16 +1,28 @@
 import Link from 'next/link'
 import type { FC, ReactNode } from 'react'
 
-import { CLUB_DESCRIPTION, HERO, SITE_NAME } from '@/globals/config/site'
-import { SOCIAL_LINKS } from '@/globals/config/social'
-import { LogoMark } from '@/globals/Logo'
+import { Wordmark } from '@/globals/Logo'
 import { button, eyebrow } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
+import type { HomeButton, HomepageContent } from '@/lib/homepage'
+
+/** A button to a page here, or to another site in a new tab */
+const ButtonLink: FC<{ to: HomeButton; className: string }> = ({ to, className }) =>
+  to.href.startsWith('/') ? (
+    <Link href={to.href} className={className}>
+      {to.label}
+    </Link>
+  ) : (
+    <a href={to.href} className={className} target="_blank" rel="noopener noreferrer">
+      {to.label}
+    </a>
+  )
 
 /** Staggered entrance; opacity stays visible when motion is reduced. */
 const fadeIn = 'animate-fade-in opacity-0 motion-reduce:animate-none motion-reduce:opacity-100'
 
-export const HomepageHero: FC = () => (
+/** The hero: logo, eyebrow, title, a line under it (with its links already made), and up to two buttons */
+export const HomepageHero: FC<{ hero: HomepageContent['hero']; lead: ReactNode }> = ({ hero, lead }) => (
   <section className="relative isolate overflow-hidden">
     {/* Soft brand glow + dot grid behind the hero */}
     <div
@@ -23,16 +35,16 @@ export const HomepageHero: FC = () => (
     />
     <div className="mx-auto flex min-h-[calc(100svh-var(--header-height))] max-w-5xl flex-col items-center justify-center gap-6 px-4 py-16 text-center">
       <div className={fadeIn}>
-        <LogoMark size={168} priority alt={SITE_NAME} className="size-[clamp(7rem,22vw,10.5rem)] shadow-[0_18px_50px_color-mix(in_srgb,var(--brand)_25%,transparent)]" />
+        <Wordmark size="xl" href={null} priority />
       </div>
-      <p className={cn(eyebrow, fadeIn, '[animation-delay:120ms]')}>{HERO.eyebrow}</p>
+      <p className={cn(eyebrow, fadeIn, '[animation-delay:120ms]')}>{hero.eyebrow}</p>
       <h1
         className={cn(
           fadeIn,
           '[animation-delay:220ms] text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.05] font-extrabold tracking-tight text-balance text-ink'
         )}
       >
-        {HERO.title}
+        {hero.title}
       </h1>
       <p
         className={cn(
@@ -40,20 +52,11 @@ export const HomepageHero: FC = () => (
           '[animation-delay:340ms] max-w-2xl text-[clamp(1rem,2vw,1.25rem)] leading-[1.65] text-pretty text-muted'
         )}
       >
-        {CLUB_DESCRIPTION.tagline} {SITE_NAME} helps you navigate campus, discover underutilized resources, and make it all the way to graduation.
+        {lead}
       </p>
       <div className={cn(fadeIn, '[animation-delay:460ms] flex flex-wrap justify-center gap-3 max-[600px]:w-full max-[600px]:max-w-80 max-[600px]:flex-col')}>
-        <Link href="/join" className={button({ size: 'lg' })}>
-          Join CSEG &rarr;
-        </Link>
-        <a
-          href={SOCIAL_LINKS.instagram}
-          className={button({ variant: 'outline', size: 'lg' })}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Follow on Instagram
-        </a>
+        <ButtonLink to={hero.primary} className={button({ size: 'lg' })} />
+        {hero.secondary ? <ButtonLink to={hero.secondary} className={button({ variant: 'outline', size: 'lg' })} /> : null}
       </div>
     </div>
   </section>
@@ -64,7 +67,7 @@ export type HomepageSectionProps = {
   title: string
   lead?: ReactNode
   children?: ReactNode
-  cta?: { href: string; label: string }
+  cta?: HomeButton
   /** Tinted background to alternate with plain sections */
   tinted?: boolean
 }
@@ -82,9 +85,7 @@ export const HomepageSection: FC<HomepageSectionProps> = ({ eyebrow: label, titl
       ) : null}
       {children}
       {cta ? (
-        <Link href={cta.href} className={button({ variant: 'outline' })}>
-          {cta.label}
-        </Link>
+        <ButtonLink to={cta} className={button({ variant: 'outline' })} />
       ) : null}
     </div>
   </section>

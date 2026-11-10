@@ -8,19 +8,18 @@ import { EateryCard } from '@/globals/Eateries'
 import { OpenBadge } from '@/globals/OpenBadge'
 import { useSiteContent } from '@/globals/SiteContent'
 import { card, iconTile } from '@/globals/ui/styles'
-import { REFERENCE_KINDS, resolveReference, type ReferenceItem, type Resolved } from '@/lib/references'
+import { REFERENCE_KINDS, resolveReference, type CardResolved, type ReferenceItem, type Resolved } from '@/lib/references'
+import { CARD_ICONS } from '@/lib/richtext/blocks'
 
 /**
  * A References block: things already on the site, each drawn live as a card from what's
- * published now (SiteContent); an area's eateries as a card each. Something that's gone
+ * published now (SiteContent); an area's eateries, or a group's resources, as a card each. Something that's gone
  * (deleted, unpublished) drops out on the site; in the editor (`preview`) it says so, so it
  * can be fixed.
  */
 
 /** Cards side by side as the page's width allows */
 const blockGrid = 'my-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] gap-4'
-
-type CardResolved = Extract<Resolved, { label: string }>
 
 const ICONS: Record<CardResolved['kind'], LucideIcon> = { place: MapPin, resource: BookOpen, post: Newspaper, page: FileText }
 
@@ -31,7 +30,7 @@ const stretched =
 
 /** The whole card opens what it points at (the title's link is stretched over it); "Show on map" sits above that */
 const ReferenceCard: FC<{ item: CardResolved; preview: boolean }> = ({ item, preview }) => {
-  const Icon = ICONS[item.kind]
+  const Icon = (item.icon && CARD_ICONS[item.icon]?.Icon) || ICONS[item.kind]
   const external = isExternal(item.href)
   return (
     <article className={card({ padded: true, className: 'group relative flex flex-col gap-2 transition-colors hover:border-brand/55 has-[a:focus-visible]:border-brand' })}>
@@ -70,8 +69,9 @@ const ReferenceCard: FC<{ item: CardResolved; preview: boolean }> = ({ item, pre
 
 const Note: FC<{ children: string }> = ({ children }) => <p className="m-0 rounded-lg border border-dashed border-line px-4 py-3 text-[0.85rem] text-muted">{children}</p>
 
-/** Whether a found reference has anything to draw (an area can have no eateries yet) */
-const shows = (found: Resolved | null) => !!found && (found.kind !== 'eateries' || found.eateries.length > 0)
+/** Whether a found reference has anything to draw (an area or group can be empty) */
+const shows = (found: Resolved | null) =>
+  !!found && (found.kind === 'eateries' ? found.eateries.length > 0 : found.kind === 'resources' ? found.cards.length > 0 : true)
 
 export const ReferenceGrid: FC<{ items: readonly ReferenceItem[]; preview?: boolean }> = ({ items, preview = false }) => {
   const content = useSiteContent()
@@ -85,6 +85,12 @@ export const ReferenceGrid: FC<{ items: readonly ReferenceItem[]; preview?: bool
             found.eateries.map((e) => <EateryCard key={`${key}:${e.id}`} eatery={e} />)
           ) : preview ? (
             <Note key={key}>{`No eateries in ${found.title} yet. Add them under Eateries.`}</Note>
+          ) : null
+        if (found?.kind === 'resources')
+          return found.cards.length ? (
+            found.cards.map((c) => <ReferenceCard key={`${key}:${c.href}`} item={c} preview={preview} />)
+          ) : preview ? (
+            <Note key={key}>{`No resources in ${found.title} yet. Add them under Resources.`}</Note>
           ) : null
         if (found?.kind === 'eatery') return <EateryCard key={key} eatery={found.eatery} />
         if (found) return <ReferenceCard key={key} item={found} preview={preview} />

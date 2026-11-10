@@ -90,6 +90,70 @@ describe('AppShell', () => {
   })
 })
 
+describe('AppShell sidebar', () => {
+  const nav = [
+    { label: 'Club', items: [{ label: 'Members', href: '/dashboard/members' }] },
+    { pinned: true, items: [{ label: 'Settings', href: '/dashboard/settings' }] },
+  ]
+  beforeEach(() => window.localStorage.clear())
+
+  it('keeps pinned links out of the scrolling list, and in the phone menu', () => {
+    render(<AppShell nav={nav}>Page</AppShell>)
+    const [list] = screen.getAllByRole('navigation', { name: 'Dashboard' })
+    expect(list).not.toHaveTextContent('Settings')
+    expect(screen.getByRole('navigation', { name: 'Dashboard, more' })).toHaveTextContent('Settings')
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
+    expect(screen.getAllByRole('navigation', { name: 'Dashboard' }).at(-1)).toHaveTextContent('Settings')
+  })
+
+  it('remembers nothing without a key', () => {
+    render(<AppShell nav={nav}>Page</AppShell>)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(window.localStorage.length).toBe(0)
+  })
+
+  it('remembers being narrowed', () => {
+    const { unmount } = render(
+      <AppShell nav={nav} persistKey="side">
+        Page
+      </AppShell>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    unmount()
+    render(
+      <AppShell nav={nav} persistKey="side">
+        Page
+      </AppShell>
+    )
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+  })
+
+  it('remembers being widened, over a narrow default', () => {
+    window.localStorage.setItem('side', 'expanded')
+    render(
+      <AppShell nav={nav} persistKey="side" defaultCollapsed>
+        Page
+      </AppShell>
+    )
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
+  })
+
+  it('ignores a saved value it doesn’t know, and carries on when storage is off', () => {
+    window.localStorage.setItem('side', 'sideways')
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Quota exceeded')
+    })
+    render(
+      <AppShell nav={nav} persistKey="side">
+        Page
+      </AppShell>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+    setItem.mockRestore()
+  })
+})
+
 describe('Small pieces', () => {
   it('EmptyState shows its title, description, and actions', () => {
     render(<EmptyState title="No events yet" description="Create one to get started" actions={<button type="button">Create</button>} headingLevel={2} />)

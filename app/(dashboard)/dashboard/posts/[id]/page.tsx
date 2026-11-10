@@ -16,7 +16,8 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
   if (!doc) notFound()
   return (
     <SiteContentProvider content={await getSiteContent()}>
-      <DocumentEditor kind="post" doc={doc} />
+      {/* Keyed by the last save, so a restored version opens fresh */}
+      <DocumentEditor key={doc.updated_at} kind="post" doc={doc} />
     </SiteContentProvider>
   )
 }

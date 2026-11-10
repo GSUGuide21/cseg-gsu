@@ -1,11 +1,11 @@
-import ComponentsDemoPage from '../app/(page)/dev/components/page'
-import DashboardDemoPage from '../app/(page)/dev/dashboard/page'
-import PostEditorDemoPage from '../app/(page)/dev/post-editor/page'
-import PageEditorDemoPage from '../app/(page)/dev/page-editor/page'
+import ComponentsDemoPage from '../app/(dev)/dev/components/page'
+import DashboardDemoPage from '../app/(dev)/dev/dashboard/page'
+import PostEditorDemoPage from '../app/(dev)/dev/post-editor/page'
+import PageEditorDemoPage from '../app/(dev)/dev/page-editor/page'
 
 // The post editor preview imports the dashboard's server actions, which need a server; only the 404 is checked here
 jest.mock('../app/lib/dashboard/actions', () => ({}))
-import FormsDemoPage from '../app/(page)/dev/forms/page'
+import FormsDemoPage from '../app/(dev)/dev/forms/page'
 
 describe('Development-only pages', () => {
   it('404s the form demo outside next dev', () => {

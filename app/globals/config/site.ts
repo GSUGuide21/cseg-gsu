@@ -6,6 +6,9 @@ export const SITE_NAME = 'Campus Survival and Engagement Group'
 
 export const SITE_SHORT_NAME = 'CSEG'
 
+export const SITE_LOGO_TOP_TEXT = "Campus Survival"
+export const SITE_LOGO_BOTTOM_TEXT = "and Engagement Group"
+
 export const CLUB_DESCRIPTION = {
   /** Hero, social bios */
   tagline: 'Your gateway to life on campus at Georgia State.',

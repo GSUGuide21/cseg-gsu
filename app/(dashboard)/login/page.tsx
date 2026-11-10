@@ -28,10 +28,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (access.state === 'officer') redirect(next)
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4 py-12">
+    <div className="relative isolate grid min-h-dvh place-items-center overflow-hidden px-4 py-12">
+      <span aria-hidden className="absolute -top-40 left-1/2 -z-10 size-[42rem] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" />
+      <span aria-hidden className="absolute -right-32 -bottom-48 -z-10 size-[30rem] rounded-full bg-series-1/10 blur-3xl" />
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <LogoMark size={64} alt="" />
+        <div className="flex flex-col items-center gap-3 text-center motion-safe:animate-fade-in">
+          <LogoMark size={64} alt="" className="shadow-card" />
           <h1 className="m-0 text-[1.6rem] font-extrabold tracking-tight text-ink">Officer dashboard</h1>
           <p className="m-0 text-[0.92rem] text-muted">Members, events, posts, and the campus map, for CSEG officers.</p>
         </div>
@@ -51,7 +53,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             ) : reason && ERRORS[reason] ? (
               <Alert tone="danger">{ERRORS[reason]}</Alert>
             ) : null}
-            <div className="flex flex-col gap-3 rounded-2xl border border-line p-5">
+            <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-5 shadow-card">
               <GoogleButton next={next} />
               {access.state === 'not-officer' ? (
                 <form action="/auth/signout" method="post" className="text-center">

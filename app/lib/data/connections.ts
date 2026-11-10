@@ -5,10 +5,10 @@
  * on their own. Indoor links OSM doesn't have are added to the walking network here.
  * Sources: GSU Library (The Link), OSM, and a GSU student page on the Decatur Street bridge.
  *
- * CSEG officers: add the shortcuts you know. A `path` is a list of [lat, lng] points (right-click
- * on openstreetmap.org and pick "Show address" to read them). Indoor links between two
- * buildings set `ends` to both place ids so routes go in and out through their doors.
- * No rebuild needed.
+ * CSEG officers add the shortcuts they know under Dashboard → Shortcuts (the map_connections
+ * table); this list is what the map uses until that has any, and what `npm run
+ * connections:seed` copies in. A `path` is a list of [lat, lng] points. Indoor links between
+ * two buildings set `ends` to both place ids so routes go in and out through their doors.
  */
 import type { Connection } from '../wayfinding'
 

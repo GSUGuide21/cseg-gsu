@@ -3,22 +3,17 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import type { FC } from 'react'
 
-import { ManagedPage } from '@/globals/Page/ManagedPage'
-import { getPublishedPage } from '@/lib/dashboard/public'
+import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
+import { getPublishedPage, getResources, pageMetadata } from '@/lib/dashboard/public'
 import { SITE_PAGES } from '@/lib/sitePages'
 import { PageBlock, PageCallout, PageHeader } from '@/globals/Page'
 import { button, card, grid3, iconTile, pageShell } from '@/globals/ui/styles'
 import { getPlace, mapHref } from '@/lib/data/places'
-import { GROUP_CHATS, RESOURCE_GROUPS, type ResourceLink } from '@/lib/data/resources'
-
-const FALLBACK_METADATA: Metadata = {
-  title: 'Resources',
-  description:
-    'Links to Georgia State services for academics, money, health, housing, and getting involved, plus GSU colleges and student group chats.',
-}
+import { CHATS_GROUP, resourcesIn, type Resource, type ResourceGroup } from '@/lib/resources'
+import { CARD_ICONS } from '@/lib/richtext/blocks'
 
 /** The whole card opens the resource (the title link is stretched over it); "Show on map" sits above that layer. */
-const ResourceCard: FC<{ link: ResourceLink; Icon?: LucideIcon }> = ({ link, Icon }) => {
+const ResourceCard: FC<{ link: Resource; Icon?: LucideIcon }> = ({ link, Icon }) => {
   const place = link.placeId ? getPlace(link.placeId) : undefined
   return (
     <li
@@ -63,7 +58,9 @@ const ResourceCard: FC<{ link: ResourceLink; Icon?: LucideIcon }> = ({ link, Ico
   )
 }
 
-function ResourcesContent() {
+/** The resources and their groups, from the dashboard (or the built-in list until it has any) */
+function ResourcesContent({ groups, resources }: { groups: readonly ResourceGroup[]; resources: readonly Resource[] }) {
+  const shown = groups.filter((g) => resourcesIn(resources, g.slug).length)
   return (
     <div className={pageShell}>
       <PageHeader
@@ -71,18 +68,20 @@ function ResourcesContent() {
         title="Student resources"
         lead="Georgia State offers more support than most students ever use. These are the links we point Panthers to most, from registering for classes to finding free food."
       >
-        <a href="#chats" className={button()}>
-          <MessagesSquare size={16} aria-hidden />
-          Join a group chat
-        </a>
+        {shown.some((g) => g.slug === CHATS_GROUP) ? (
+          <a href={`#${CHATS_GROUP}`} className={button()}>
+            <MessagesSquare size={16} aria-hidden />
+            Join a group chat
+          </a>
+        ) : null}
       </PageHeader>
 
       {/* Jump links */}
       <nav aria-label="Categories" className="-mt-4 flex flex-wrap gap-2">
-        {[...RESOURCE_GROUPS, { id: 'chats', title: 'Group chats' }].map(({ id, title }) => (
+        {shown.map(({ slug, title }) => (
           <a
-            key={id}
-            href={`#${id}`}
+            key={slug}
+            href={`#${slug}`}
             className="rounded-full border border-line px-3.5 py-1.5 text-[0.85rem] font-semibold text-ink-soft no-underline transition-colors hover:border-brand hover:text-brand"
           >
             {title}
@@ -90,27 +89,15 @@ function ResourcesContent() {
         ))}
       </nav>
 
-      {RESOURCE_GROUPS.map(({ id, title, description, Icon, links }) => (
-        <PageBlock key={id} id={id} title={title} description={description}>
+      {shown.map(({ slug, title, description, icon }) => (
+        <PageBlock key={slug} id={slug} title={title} description={description}>
           <ul className={grid3}>
-            {links.map((link) => (
-              <ResourceCard key={link.href} link={link} Icon={Icon} />
+            {resourcesIn(resources, slug).map((link) => (
+              <ResourceCard key={link.id} link={link} Icon={CARD_ICONS[icon]?.Icon} />
             ))}
           </ul>
         </PageBlock>
       ))}
-
-      <PageBlock
-        id="chats"
-        title="Group chats"
-        description="Student-run GroupMe chats. Be kind, and never share personal or financial info with someone you haven't met."
-      >
-        <ul className={grid3}>
-          {GROUP_CHATS.map((link) => (
-            <ResourceCard key={link.href} link={link} Icon={MessagesSquare} />
-          ))}
-        </ul>
-      </PageBlock>
 
       <PageCallout
         title="Can't find what you need?"
@@ -130,11 +117,13 @@ export const revalidate = 300
 
 export async function generateMetadata(): Promise<Metadata> {
   const page = await getPublishedPage('resources')
-  return page ? { title: page.title, description: page.description ?? FALLBACK_METADATA.description } : FALLBACK_METADATA
+  // Its page in the dashboard, while published; otherwise the tab title officers set (or the site's own)
+  const meta = await pageMetadata('/resources')
+  return page ? managedPageMetadata(page, meta.description) : meta
 }
 
 /** The Resources page officers wrote in the dashboard, once it's published; the one above until then */
 export default async function ResourcesPage() {
   const page = await getPublishedPage('resources')
-  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.resources.eyebrow} /> : <ResourcesContent />
+  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.resources.eyebrow} /> : <ResourcesContent {...await getResources()} />
 }

@@ -1,37 +1,37 @@
 'use client'
 
-import { Download, Pencil, Trash2, UserCheck, UserMinus, UserPlus, Users } from 'lucide-react'
+import { Download, Pencil, Trash2, UserCheck, UserMinus, UserPlus, UserRound, Users } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, type FC } from 'react'
 
 import { ActionMenu, Avatar, Badge, Button, Dialog, EmptyState, FilterBar, Table, useNotify, type FilterValues } from '@/components'
 import { DatePicker, Field, Input, SegmentedControl, Select, TextArea } from '@/components/Form'
 import { removeMembers, saveMember, setMemberStatus } from '@/lib/dashboard/actions'
+import { downloadCsv } from '@/lib/csv'
+import type { Attendance } from '@/lib/dashboard/attendance'
 import { formatDate } from '@/lib/dashboard/format'
 import { STATUSES, YEARS } from '@/lib/dashboard/validate'
 import type { MemberRow, MemberStatus } from '@/lib/supabase/types'
 
 import { PageTitle, useAction } from '../ui'
 
-const STATUS: Record<MemberStatus, { word: string; tone: 'success' | 'brand' | 'neutral' }> = {
+export const STATUS: Record<MemberStatus, { word: string; tone: 'success' | 'brand' | 'neutral' }> = {
   active: { word: 'Active', tone: 'success' },
   new: { word: 'New', tone: 'brand' },
   inactive: { word: 'Inactive', tone: 'neutral' },
 }
 
-/** The selected members as a CSV file, downloaded in the browser */
-const downloadCsv = (rows: MemberRow[]) => {
-  const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const head = ['Name', 'Email', 'Major', 'Year', 'Status', 'Joined']
-  const lines = [head, ...rows.map((m) => [m.name, m.email, m.major, m.year, STATUS[m.status].word, m.joined_on])].map((r) => r.map(cell).join(','))
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
-  const a = Object.assign(document.createElement('a'), { href: url, download: `cseg-members-${new Date().toISOString().slice(0, 10)}.csv` })
-  a.click()
-  URL.revokeObjectURL(url)
-}
+/** Members as a CSV file, downloaded in the browser */
+const exportMembers = (rows: MemberRow[]) =>
+  downloadCsv(
+    'cseg-members',
+    ['Name', 'Email', 'Major', 'Year', 'Status', 'Joined'],
+    rows.map((m) => [m.name, m.email, m.major, m.year, STATUS[m.status].word, m.joined_on])
+  )
 
 /** Add or edit one member */
-const MemberDialog: FC<{ member: MemberRow | null; open: boolean; onClose: () => void }> = ({ member, open, onClose }) => {
+export const MemberDialog: FC<{ member: MemberRow | null; open: boolean; onClose: () => void }> = ({ member, open, onClose }) => {
   const router = useRouter()
   const { pending, errors, run } = useAction()
   const [status, setStatus] = useState<string>(member?.status ?? 'new')
@@ -93,7 +93,13 @@ const MemberDialog: FC<{ member: MemberRow | null; open: boolean; onClose: () =>
   )
 }
 
-export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = ({ members, startAdding }) => {
+/** `dues` is who's paid for the current term; without it (no terms yet) the Dues column stays out */
+export const MembersView: FC<{ members: MemberRow[]; attendance?: Record<string, Attendance>; dues?: { term: string; paid: string[] } | null; startAdding: boolean }> = ({
+  members,
+  attendance = {},
+  dues,
+  startAdding,
+}) => {
   const router = useRouter()
   const { confirm, toast } = useNotify()
   const [filters, setFilters] = useState<FilterValues>({})
@@ -107,6 +113,7 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
     setEditing(m)
   }
 
+  const paid = useMemo(() => new Set(dues?.paid ?? []), [dues])
   const majors = useMemo(() => [...new Set(members.map((m) => m.major).filter((m): m is string => !!m))].sort(), [members])
   const q = query.trim().toLowerCase()
   const rows = members.filter(
@@ -114,6 +121,7 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
       (!filters.status?.length || filters.status.includes(m.status)) &&
       (!filters.year?.length || (m.year && filters.year.includes(m.year))) &&
       (!filters.major?.length || (m.major && filters.major.includes(m.major))) &&
+      (!filters.dues?.length || filters.dues.includes(paid.has(m.id) ? 'paid' : 'unpaid')) &&
       (!q || m.name.toLowerCase().includes(q) || m.email?.includes(q) || m.major?.toLowerCase().includes(q))
   )
 
@@ -144,12 +152,18 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
   return (
     <>
       <PageTitle
+        icon={<Users />}
         title="Members"
         description="Everyone in the club. Check-ins at events link to these records."
         actions={
-          <Button size="sm" leading={<UserPlus size={15} aria-hidden />} onClick={() => open('new')}>
-            Add member
-          </Button>
+          <>
+            <Button size="sm" variant="outline" leading={<Download size={15} aria-hidden />} disabled={!members.length} onClick={() => exportMembers(members)}>
+              Export all
+            </Button>
+            <Button size="sm" leading={<UserPlus size={15} aria-hidden />} onClick={() => open('new')}>
+              Add member
+            </Button>
+          </>
         }
       />
       <div className="flex flex-col gap-4">
@@ -158,6 +172,18 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
             { id: 'status', label: 'Status', options: STATUSES.map((s) => ({ value: s, label: STATUS[s].word, count: members.filter((m) => m.status === s).length })) },
             { id: 'year', label: 'Year', options: YEARS.map((y) => ({ value: y, label: y })) },
             ...(majors.length ? [{ id: 'major', label: 'Major', options: majors.map((m) => ({ value: m, label: m })) }] : []),
+            ...(dues
+              ? [
+                  {
+                    id: 'dues',
+                    label: 'Dues',
+                    options: [
+                      { value: 'paid', label: 'Paid', count: members.filter((m) => paid.has(m.id)).length },
+                      { value: 'unpaid', label: 'Unpaid', count: members.filter((m) => !paid.has(m.id)).length },
+                    ],
+                  },
+                ]
+              : []),
           ]}
           value={filters}
           onValueChange={setFilters}
@@ -167,8 +193,9 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
           resultCount={rows.length}
         />
         <Table
-          caption="Members"
-          hideCaption
+          caption="Club roster"
+          titleBar
+          columnMenu
           rows={rows}
           getRowId={(m) => m.id}
           getRowLabel={(m) => m.name}
@@ -184,7 +211,7 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
               <Button size="sm" variant="outline" leading={<UserMinus size={15} aria-hidden />} onClick={() => bulk(ids, 'inactive')}>
                 Mark inactive
               </Button>
-              <Button size="sm" variant="outline" leading={<Download size={15} aria-hidden />} onClick={() => downloadCsv(members.filter((m) => ids.includes(m.id)))}>
+              <Button size="sm" variant="outline" leading={<Download size={15} aria-hidden />} onClick={() => exportMembers(members.filter((m) => ids.includes(m.id)))}>
                 Export CSV
               </Button>
               <Button size="sm" variant="danger" leading={<Trash2 size={15} aria-hidden />} onClick={() => remove(ids)}>
@@ -227,30 +254,53 @@ export const MembersView: FC<{ members: MemberRow[]; startAdding: boolean }> = (
                 <span className="flex items-center gap-3">
                   <Avatar name={m.name} size="sm" decorative />
                   <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{m.name}</span>
+                    <Link href={`/dashboard/members/${m.id}`} className="truncate text-ink no-underline hover:text-brand hover:underline">
+                      {m.name}
+                    </Link>
                     {m.email ? <span className="truncate text-[0.8rem] font-normal text-muted">{m.email}</span> : null}
                   </span>
                 </span>
               ),
             },
-            { key: 'major', header: 'Major', sortable: true },
-            { key: 'year', header: 'Year', sortable: true, sortValue: (m) => (m.year ? YEARS.indexOf(m.year) : null), hideWhenStacked: true },
+            { key: 'major', header: 'Major', sortable: true, groupable: true },
+            { key: 'year', header: 'Year', sortable: true, groupable: true, sortValue: (m) => (m.year ? YEARS.indexOf(m.year) : null), hideWhenStacked: true },
             {
               key: 'status',
               header: 'Status',
               sortable: true,
+              groupable: true,
+              groupValue: (m) => STATUS[m.status].word,
               cell: (m) => (
                 <Badge size="sm" dot tone={STATUS[m.status].tone}>
                   {STATUS[m.status].word}
                 </Badge>
               ),
             },
+            ...(dues
+              ? [
+                  {
+                    key: 'dues',
+                    header: `Dues, ${dues.term}`,
+                    sortable: true,
+                    sortValue: (m: MemberRow) => (paid.has(m.id) ? 1 : 0),
+                    hideWhenStacked: true,
+                    cell: (m: MemberRow) => (
+                      <Badge size="sm" dot tone={paid.has(m.id) ? 'success' : 'warning'}>
+                        {paid.has(m.id) ? 'Paid' : 'Unpaid'}
+                      </Badge>
+                    ),
+                  },
+                ]
+              : []),
+            { key: 'events', header: 'Events', sortable: true, sortValue: (m) => attendance[m.id]?.events ?? 0, hideWhenStacked: true, cell: (m) => attendance[m.id]?.events ?? 0 },
+            { key: 'last_seen', header: 'Last seen', sortable: true, sortValue: (m) => attendance[m.id]?.lastSeen ?? null, hideWhenStacked: true, cell: (m) => (attendance[m.id] ? formatDate(attendance[m.id].lastSeen) : 'Not yet') },
             { key: 'joined_on', header: 'Joined', sortable: true, cell: (m) => formatDate(m.joined_on) },
           ]}
           rowActions={(m) => (
             <ActionMenu
               label={`Actions for ${m.name}`}
               items={[
+                { label: 'View profile', icon: <UserRound />, href: `/dashboard/members/${m.id}` },
                 { label: 'Edit', icon: <Pencil />, onSelect: () => open(m) },
                 {
                   label: 'Change status',

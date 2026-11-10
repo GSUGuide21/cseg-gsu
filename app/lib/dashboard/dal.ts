@@ -48,6 +48,16 @@ export async function requireOfficer() {
   return { officer: access.officer, supabase }
 }
 
+/**
+ * As requireOfficer, for what's about people: members, check-ins, messages, dues, requests
+ * to join, and minutes. An editor (who only writes the site) is sent back to the Overview.
+ */
+export async function requireStaff() {
+  const ctx = await requireOfficer()
+  if (ctx.officer.role === 'editor') redirect('/dashboard')
+  return ctx
+}
+
 /** As requireOfficer, for what only admins may do (the officer list, club settings) */
 export async function requireAdmin() {
   const ctx = await requireOfficer()

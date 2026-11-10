@@ -5,6 +5,7 @@ import type { FC, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
 import { Skeleton } from '../Skeleton'
+import { toneSurface, toneText } from '../tones'
 import type { StatProps } from './types'
 
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
@@ -17,7 +18,7 @@ const W = 112
 const H = 36
 const PAD = 5
 
-/** Recent values as a quiet line, the current one marked */
+/** Recent values as a line that draws itself in over a soft fill, the current one marked */
 const Sparkline: FC<{ values: number[] }> = ({ values }) => {
   const min = Math.min(...values)
   const max = Math.max(...values)
@@ -28,7 +29,8 @@ const Sparkline: FC<{ values: number[] }> = ({ values }) => {
   const last = values.length - 1
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="shrink-0 overflow-visible">
-      <polyline points={points} fill="none" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" className="stroke-ink-faint/60" />
+      <polygon points={`${x(0).toFixed(1)},${H} ${points} ${x(last).toFixed(1)},${H}`} className="fill-brand/10 motion-safe:animate-fade-in" />
+      <polyline points={points} pathLength={1} fill="none" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" className="stroke-brand motion-safe:animate-draw" />
       {/* The current period in the accent, ringed in the surface color */}
       <circle cx={x(last)} cy={y(values[last])} r={4} strokeWidth={2} className="fill-brand stroke-surface" />
     </svg>
@@ -52,6 +54,7 @@ export const Stat: FC<StatProps> = ({
   trend,
   trendLabel,
   icon,
+  tone = 'brand',
   description,
   href,
   loading = false,
@@ -90,8 +93,8 @@ export const Stat: FC<StatProps> = ({
     <div
       aria-busy={loading || undefined}
       className={cn(
-        'relative flex min-w-0 flex-col gap-2 rounded-xl border border-line bg-surface p-5',
-        href && 'transition-[border-color,box-shadow] hover:border-brand-edge hover:shadow-[0_4px_16px_rgb(0_0_0/0.06)] has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-brand',
+        'relative flex min-w-0 flex-col gap-2 rounded-xl border border-line bg-surface p-5 shadow-card',
+        href && 'transition-[border-color,translate] hover:border-brand-edge motion-safe:hover:-translate-y-0.5 has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-brand',
         className
       )}
     >
@@ -104,7 +107,7 @@ export const Stat: FC<StatProps> = ({
         ) : (
           <p className="m-0 text-[0.85rem] font-semibold text-ink-soft">{label}</p>
         )}
-        {icon ? <span className="text-muted [&>svg]:size-4.5">{icon}</span> : null}
+        {icon ? <span className={cn(toneSurface({ tone }), 'grid size-9 shrink-0 place-items-center rounded-lg border [&>svg]:size-4.5', toneText[tone])}>{icon}</span> : null}
       </div>
       {loading ? (
         <>
@@ -114,7 +117,7 @@ export const Stat: FC<StatProps> = ({
       ) : (
         <>
           <div className="flex items-end justify-between gap-3">
-            <p className="m-0 text-[clamp(1.6rem,3vw,2rem)] leading-none font-bold tracking-tight text-ink">{shownValue}</p>
+            <p className="m-0 text-[clamp(1.6rem,3vw,2rem)] leading-none font-extrabold tracking-tight text-ink">{shownValue}</p>
             {trend && trend.length > 1 ? <Sparkline values={trend} /> : null}
           </div>
           {trendWords ? <span className="sr-only">{trendWords}</span> : null}

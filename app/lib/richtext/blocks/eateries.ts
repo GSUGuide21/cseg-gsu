@@ -1,4 +1,4 @@
-import { EATERY_KINDS, isEatArea, type EateryKind } from '@/lib/eateries'
+import { EATERY_KINDS, type EateryKind } from '@/lib/eateries'
 import { eateriesRef, type ReferenceItem } from '@/lib/references'
 
 /**
@@ -10,9 +10,9 @@ import { eateriesRef, type ReferenceItem } from '@/lib/references'
 
 type Node = { type?: string; children?: Node[]; [key: string]: unknown }
 
-/** An old Eateries block as the reference it became; null when its area isn't one */
+/** An old Eateries block as the reference it became; null without an area (one that's gone shows nothing) */
 export const legacyEateriesItem = (area: unknown, kind: unknown): ReferenceItem | null =>
-  isEatArea(area) ? { kind: 'eateries', ref: eateriesRef(area, typeof kind === 'string' && Object.hasOwn(EATERY_KINDS, kind) ? (kind as EateryKind) : 'all') } : null
+  typeof area === 'string' && /^[a-z0-9-]+$/.test(area) ? { kind: 'eateries', ref: eateriesRef(area, typeof kind === 'string' && Object.hasOwn(EATERY_KINDS, kind) ? (kind as EateryKind) : 'all') } : null
 
 /** Saved writing with its old Eateries blocks made References blocks; anything else comes back as it was */
 export function upgradeEateriesBlocks(source: string): string {
@@ -33,5 +33,8 @@ export function upgradeEateriesBlocks(source: string): string {
   return JSON.stringify({ ...(JSON.parse(source) as object), root: upgrade(root) })
 }
 
-/** Whether saved writing has a block drawn live from the site (References, or an old Eateries one), so it needs SiteContent */
-export const hasLiveBlock = (...sources: string[]) => sources.some((s) => s.includes('"type":"reference"') || s.includes('"type":"eateries"'))
+/** What's drawn live from the site: References, upcoming events, map places, chips, and old Eateries blocks */
+const LIVE_TYPES = ['reference', 'eateries', 'events', 'place', 'chip']
+
+/** Whether saved writing (Lexical JSON or Portable Text) has something drawn live from the site, so it needs SiteContent */
+export const hasLiveBlock = (...sources: string[]) => sources.some((s) => LIVE_TYPES.some((t) => s.includes(`"type":"${t}"`) || s.includes(`"_type":"${t}"`)))

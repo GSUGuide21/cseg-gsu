@@ -1,40 +1,36 @@
 /**
- * Places to eat: their shape, the areas they're grouped in, and how they become map pins.
- * The eateries themselves are edited in the dashboard (the eateries table); the list in
- * ./data/eats is what the site shows until that table has any, and what seeds it.
+ * Places to eat: their shape, the areas they're grouped in, and closures for breaks.
+ * The eateries, areas, and closures are edited in the dashboard (their tables); the list in
+ * ./data/eats and BUILT_IN_AREAS are what the site shows until the tables have any, and what
+ * seeds them.
  */
 import type { HoursRange, Schedule } from './hours'
-import type { Database, EateryRow } from './supabase/types'
+import type { Database, EateryAreaRow, EateryClosureRow, EateryRow } from './supabase/types'
 
 type EateryInsert = Database['public']['Tables']['eateries']['Insert']
 
-export type EatArea =
-  | 'campus'
-  | 'park-place'
-  | 'broad-peachtree'
-  | 'luckie-forsyth'
-  | 'peachtree-center'
-  | 'piedmont-auburn'
+/** An area's slug: its #link on the page, and what References point at */
+export type EatArea = string
 
-export const EAT_AREAS: Record<EatArea, { title: string; description?: string }> = {
-  campus: {
-    title: 'On campus',
-    description: 'Run by PantherDining. Pay with PantherCash, PantherMeals, or a card.',
-  },
-  'park-place': { title: 'Park Place, Edgewood, Hurt Plaza & Decatur Street' },
-  'broad-peachtree': { title: 'Broad Street & Peachtree Street' },
-  'luckie-forsyth': { title: 'Luckie Street, Forsyth Street & downtown core' },
-  'peachtree-center': {
+/** An area places to eat are grouped in, as the page shows it */
+export type EateryArea = { readonly slug: EatArea; readonly title: string; readonly description?: string }
+
+/** The areas the site starts with (the eatery_areas table starts as these), in the page's order */
+export const BUILT_IN_AREAS: readonly EateryArea[] = [
+  { slug: 'campus', title: 'On campus', description: 'Run by PantherDining. Pay with PantherCash, PantherMeals, or a card.' },
+  { slug: 'park-place', title: 'Park Place, Edgewood, Hurt Plaza & Decatur Street' },
+  { slug: 'broad-peachtree', title: 'Broad Street & Peachtree Street' },
+  { slug: 'luckie-forsyth', title: 'Luckie Street, Forsyth Street & downtown core' },
+  {
+    slug: 'peachtree-center',
     title: 'The Hub at Peachtree Center',
     description:
       'Food court under Peachtree Center, connected to the Peachtree Center MARTA station. Mostly a weekday lunch scene: many counters close early evening and on weekends.',
   },
-  'piedmont-auburn': { title: 'Piedmont Avenue, Auburn Avenue & Sweet Auburn' },
-}
+  { slug: 'piedmont-auburn', title: 'Piedmont Avenue, Auburn Avenue & Sweet Auburn' },
+]
 
-export const EAT_AREA_LIST = Object.keys(EAT_AREAS) as EatArea[]
-
-export const isEatArea = (value: unknown): value is EatArea => typeof value === 'string' && Object.hasOwn(EAT_AREAS, value)
+export const findArea = (areas: readonly EateryArea[], slug: string) => areas.find((a) => a.slug === slug)
 
 export type EateryLocation = {
   readonly id: string
@@ -111,28 +107,55 @@ export const parseSchedule = (value: unknown): Schedule | undefined => {
 
 const orUndefined = <T>(v: T | null) => v ?? undefined
 
-/** A row of the eateries table as an eatery; null when its area isn't one of the page's */
-export const eateryFromRow = (row: EateryRow): Eatery | null =>
-  isEatArea(row.area)
-    ? {
-        id: row.slug,
-        name: row.name,
-        area: row.area,
-        address: row.address,
-        description: row.description,
-        hours: orUndefined(row.hours),
-        schedule: parseSchedule(row.schedule),
-        status: orUndefined(row.status),
-        note: orUndefined(row.note),
-        lat: orUndefined(row.lat),
-        lng: orUndefined(row.lng),
-        locations: row.locations.length ? row.locations.map((l) => ({ id: l.id, label: l.label, lat: l.lat, lng: l.lng, schedule: parseSchedule(l.schedule) })) : undefined,
-        placeId: orUndefined(row.place_id),
-        url: orUndefined(row.url),
-        diningHall: row.dining_hall,
-        aliases: row.aliases,
-      }
-    : null
+/** A row of the eateries table as an eatery */
+export const eateryFromRow = (row: EateryRow): Eatery => ({
+  id: row.slug,
+  name: row.name,
+  area: row.area,
+  address: row.address,
+  description: row.description,
+  hours: orUndefined(row.hours),
+  schedule: parseSchedule(row.schedule),
+  status: orUndefined(row.status),
+  note: orUndefined(row.note),
+  lat: orUndefined(row.lat),
+  lng: orUndefined(row.lng),
+  locations: row.locations.length ? row.locations.map((l) => ({ id: l.id, label: l.label, lat: l.lat, lng: l.lng, schedule: parseSchedule(l.schedule) })) : undefined,
+  placeId: orUndefined(row.place_id),
+  url: orUndefined(row.url),
+  diningHall: row.dining_hall,
+  aliases: row.aliases,
+})
+
+export const areaFromRow = (row: EateryAreaRow): EateryArea => ({ slug: row.slug, title: row.title, description: orUndefined(row.description) })
+
+// ── Closures ─────────────────────────────────────────────────────────────────
+
+/** Today in Atlanta, "YYYY-MM-DD", as closures' dates are */
+export const atlantaToday = (now = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now)
+
+/** "2027-01-10" → "Jan 10" */
+export const shortDate = (iso: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`))
+
+/**
+ * The eateries as they are on `today`: one a closure covers shows "Closed for <label>
+ * through <date>" in place of its hours, and its hours (and each location's) read as never
+ * open, so the map shows it closed too
+ */
+export function applyClosures(eateries: readonly Eatery[], closures: readonly Pick<EateryClosureRow, 'label' | 'starts_on' | 'ends_on' | 'eateries'>[], today: string): Eatery[] {
+  const active = closures.filter((c) => c.starts_on <= today && today <= c.ends_on)
+  if (!active.length) return [...eateries]
+  return eateries.map((e) => {
+    const closure = active.find((c) => c.eateries.includes(e.id))
+    if (!closure) return e
+    return {
+      ...e,
+      status: `Closed for ${closure.label} through ${shortDate(closure.ends_on)}`,
+      schedule: e.schedule ? [] : undefined,
+      locations: e.locations?.map((l) => ({ ...l, schedule: l.schedule ? [] : undefined })),
+    }
+  })
+}
 
 /** A schedule as the table saves it */
 export const scheduleJson = (s: Schedule | undefined) => (s ? s.map((r) => ({ days: [...r.days], open: r.open, close: r.close })) : null)

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { requireOfficer, getAccess } from '@/lib/dashboard/dal'
+import { pendingRequestCount, unreadMessageCount } from '@/lib/dashboard/queries'
 
 import { DashboardShell } from './DashboardShell'
 
@@ -11,10 +12,10 @@ import { DashboardShell } from './DashboardShell'
  */
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const { officer } = await requireOfficer()
-  const access = await getAccess()
+  const [access, unread, pending] = await Promise.all([getAccess(), unreadMessageCount(), pendingRequestCount()])
   const avatarUrl = access.state === 'officer' ? access.avatarUrl : null
   return (
-    <DashboardShell officer={{ email: officer.email, name: officer.name, title: officer.title, role: officer.role }} avatarUrl={avatarUrl}>
+    <DashboardShell officer={{ email: officer.email, name: officer.name, title: officer.title, role: officer.role }} avatarUrl={avatarUrl} unread={unread} pending={pending}>
       {children}
     </DashboardShell>
   )

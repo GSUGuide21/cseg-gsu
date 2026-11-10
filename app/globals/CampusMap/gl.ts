@@ -74,7 +74,7 @@ export function tuneBaseStyle(map: Gl.Map, theme: Theme) {
 }
 
 /** Fonts the OpenFreeMap glyph server has */
-const FONT = ['Noto Sans Bold']
+export const FONT = ['Noto Sans Bold']
 
 /** Brand blue in each theme (matches --brand in globals.css) */
 const BRAND = { light: '#0039a6', dark: '#6d9bff' }

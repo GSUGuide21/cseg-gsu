@@ -3,7 +3,8 @@ import { render, screen, within } from '@testing-library/react'
 
 import { SiteContentProvider } from '@/globals/SiteContent'
 import { RESOURCE_GROUPS } from '@/lib/data/resources'
-import type { Eatery } from '@/lib/eateries'
+import { BUILT_IN_AREAS, type Eatery } from '@/lib/eateries'
+import { BUILT_IN_RESOURCE_GROUPS, BUILT_IN_RESOURCES } from '@/lib/resources'
 import { parseReferences, referenceOptions, resolveReference, type SiteContent } from '@/lib/references'
 import { DocumentBody, plainText } from '@/lib/richtext'
 import { hasLiveBlock, upgradeEateriesBlocks } from '@/lib/richtext/blocks'
@@ -14,6 +15,9 @@ const tacos: Eatery = { id: 'taco-spot', name: 'Taco Spot', area: 'park-place', 
 const hall: Eatery = { id: 'big-hall', name: 'Big Hall', area: 'campus', diningHall: true, address: '', description: '', placeId: 'piedmont-central', schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], open: '00:00', close: '24:00' }] }
 const content: SiteContent = {
   eateries: [tacos, hall],
+  areas: BUILT_IN_AREAS,
+  resources: BUILT_IN_RESOURCES,
+  resourceGroups: BUILT_IN_RESOURCE_GROUPS,
   posts: [{ slug: 'welcome-week', title: 'Welcome Week recap', excerpt: 'Photos and highlights.' }],
   pages: [
     { slug: 'about', title: 'About CSEG', description: 'Who we are.', subtitle: null },
@@ -119,7 +123,7 @@ describe('Eateries blocks from before they were references', () => {
   const old = (area: string, kind?: string) => ({ type: 'eateries', version: 1, area, ...(kind ? { kind } : {}) })
 
   it('upgrade to the References block they became, anywhere in the writing', () => {
-    const source = saved({ type: 'paragraph', version: 1, children: [] }, old('campus', 'dining-halls'), old('park-place'), old('mars'))
+    const source = saved({ type: 'paragraph', version: 1, children: [] }, old('campus', 'dining-halls'), old('park-place'), old('Not an area!'))
     const root = JSON.parse(upgradeEateriesBlocks(source)).root
     expect(root.children.slice(1)).toEqual([
       { type: 'reference', version: 1, items: [{ kind: 'eateries', ref: 'campus:dining-halls' }] },
@@ -139,5 +143,30 @@ describe('Eateries blocks from before they were references', () => {
       </SiteContentProvider>
     )
     expect(screen.getByRole('heading', { name: 'Big Hall' })).toBeInTheDocument()
+  })
+})
+
+describe('resources in References', () => {
+  const block = (...items: object[]) => saved({ type: 'reference', version: 1, items })
+
+  it('draws a group’s resources as a card each, with the group’s icon and map links', () => {
+    const { container } = render(
+      <SiteContentProvider content={content}>
+        <DocumentBody source={block({ kind: 'resources', ref: 'chats' }, { kind: 'resource', ref: BUILT_IN_RESOURCES.find((r) => r.placeId)!.id })} />
+      </SiteContentProvider>
+    )
+    const chats = BUILT_IN_RESOURCES.filter((r) => r.group === 'chats')
+    expect(container.querySelectorAll('article')).toHaveLength(chats.length + 1)
+    for (const r of chats) expect(screen.getByRole('link', { name: `${r.label} (opens in a new tab)` })).toHaveAttribute('href', r.href)
+    expect(screen.getAllByText('Resource · Group chats')).toHaveLength(chats.length)
+    expect(screen.getByRole('link', { name: 'Show on map' })).toBeInTheDocument()
+  })
+
+  it('finds a resource by its id, or by its link from before it had one', () => {
+    const paws = BUILT_IN_RESOURCES[0]
+    expect(resolveReference({ kind: 'resource', ref: paws.id }, content)).toMatchObject({ title: paws.label })
+    expect(resolveReference({ kind: 'resource', ref: paws.href }, content)).toMatchObject({ title: paws.label })
+    expect(resolveReference({ kind: 'resources', ref: 'gone' }, content)).toBeNull()
+    expect(referenceOptions('resources', content)[0]).toMatchObject({ value: BUILT_IN_RESOURCE_GROUPS[0].slug })
   })
 })

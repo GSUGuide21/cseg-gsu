@@ -3,6 +3,7 @@
 import { $createCodeNode, $isCodeNode } from '@lexical/code-core'
 import {
   $isListNode,
+  INSERT_CHECK_LIST_COMMAND,
   INSERT_ORDERED_LIST_COMMAND,
   INSERT_UNORDERED_LIST_COMMAND,
   ListNode,
@@ -19,33 +20,47 @@ import {
   $createParagraphNode,
   $getSelection,
   $insertNodes,
+  $isElementNode,
   $isRangeSelection,
   $isRootOrShadowRoot,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_LOW,
+  FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  INDENT_CONTENT_COMMAND,
+  OUTDENT_CONTENT_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SKIP_DOM_SELECTION_TAG,
+  type ElementFormatType,
+  type LexicalEditor,
   type TextFormatType,
 } from 'lexical'
 import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   Bold,
   ChevronDown,
   Code,
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
   Highlighter,
   Info,
   Italic,
   Link2,
   List,
+  ListChecks,
   ListOrdered,
   Pilcrow,
   Quote,
   SquareCode,
   Strikethrough,
+  Subscript,
+  Superscript,
   Table,
   Underline,
 } from 'lucide-react'
@@ -78,10 +93,12 @@ export const BLOCKS: { type: BlockType; label: string; icon: ReactNode }[] = [
   { type: 'h1', label: 'Heading 1', icon: <Heading1 /> },
   { type: 'h2', label: 'Heading 2', icon: <Heading2 /> },
   { type: 'h3', label: 'Heading 3', icon: <Heading3 /> },
+  { type: 'h4', label: 'Heading 4', icon: <Heading4 /> },
   { type: 'quote', label: 'Quote', icon: <Quote /> },
   { type: 'callout', label: 'Callout', icon: <Info /> },
   { type: 'bullet', label: 'Bulleted list', icon: <List /> },
   { type: 'number', label: 'Numbered list', icon: <ListOrdered /> },
+  { type: 'check', label: 'Checklist', icon: <ListChecks /> },
   { type: 'code', label: 'Code block', icon: <SquareCode /> },
 ]
 
@@ -91,11 +108,45 @@ export const FORMATS: { format: TextFormatType; label: string; keys?: string; ic
   { format: 'underline', label: 'Underline', keys: 'U', icon: <Underline /> },
   { format: 'strikethrough', label: 'Strikethrough', icon: <Strikethrough /> },
   { format: 'highlight', label: 'Highlight', icon: <Highlighter /> },
-  { format: 'code', label: 'Inline code', icon: <Code /> },
+  { format: 'code', label: 'Inline code', keys: 'E', icon: <Code /> },
+  { format: 'subscript', label: 'Subscript', icon: <Subscript /> },
+  { format: 'superscript', label: 'Superscript', icon: <Superscript /> },
 ]
+
+export const ALIGNMENTS: { format: ElementFormatType; label: string; icon: ReactNode }[] = [
+  { format: 'left', label: 'Align left', icon: <AlignLeft /> },
+  { format: 'center', label: 'Center', icon: <AlignCenter /> },
+  { format: 'right', label: 'Align right', icon: <AlignRight /> },
+  { format: 'justify', label: 'Justify', icon: <AlignJustify /> },
+]
+
+const LIST_COMMANDS = { bullet: INSERT_UNORDERED_LIST_COMMAND, number: INSERT_ORDERED_LIST_COMMAND, check: INSERT_CHECK_LIST_COMMAND }
+
+/** Turns the selected lines into a kind of block. Runs inside editor.update. */
+export const $setBlockType = (editor: LexicalEditor, type: BlockType) => {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return
+  if (type === 'bullet' || type === 'number' || type === 'check') {
+    editor.dispatchCommand(LIST_COMMANDS[type], undefined)
+    return
+  }
+  $setBlocksType(selection, () =>
+    type === 'paragraph'
+      ? $createParagraphNode()
+      : type === 'quote'
+        ? $createQuoteNode()
+        : type === 'callout'
+          ? $createCalloutNode()
+          : type === 'code'
+            ? $createCodeNode()
+            : $createHeadingNode(type)
+  )
+}
 
 export interface ToolbarState {
   block: BlockType
+  /** How the cursor's block is aligned ("" for the default) */
+  align: ElementFormatType
   font: string
   size: string
   formats: Set<TextFormatType>
@@ -103,7 +154,10 @@ export interface ToolbarState {
   color: string
   background: string
   underlineColor: string
+  underlineStyle: string
   borderColor: string
+  borderStyle: string
+  borderWidth: string
   inTable: boolean
   /** Whether that table's first row is headers */
   headerRow: boolean
@@ -116,7 +170,17 @@ export interface ToolbarState {
   link: string
 }
 
-const EMPTY: ToolbarState = { block: 'paragraph', font: '', size: '', formats: new Set(), color: '', background: '', underlineColor: '', borderColor: '', inTable: false, headerRow: false, inCode: false, callout: null, faq: null, link: '' }
+const EMPTY: ToolbarState = { block: 'paragraph', align: '', font: '', size: '', formats: new Set(), color: '', background: '', underlineColor: '', underlineStyle: '', borderColor: '', borderStyle: '', borderWidth: '', inTable: false, headerRow: false, inCode: false, callout: null, faq: null, link: '' }
+
+/** Unsized text, in points: the page's 16px */
+const DEFAULT_POINTS = 12
+
+/** A size as the size box shows it. Text sized before the box went to points is in pixels, kept as saved. */
+export const pointsOf = (size: string) => {
+  const [, n, unit] = /^([\d.]+)(px|pt)$/.exec(size.trim()) ?? []
+  if (!n) return DEFAULT_POINTS
+  return unit === 'pt' ? Number(n) : Math.round(Number(n) * 1.5) / 2
+}
 
 export const isApple = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 
@@ -257,7 +321,7 @@ export const LinkTool: FC<{ current: string; disabled?: boolean; onLink: (url: s
 }
 
 /** The ribbon's big buttons: an icon over its label */
-export const bigTool = 'flex h-[3.75rem] min-w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-md px-2 text-[0.72rem] font-semibold text-ink-soft transition-colors hover:bg-fill hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-brand-tint aria-pressed:text-brand [&>svg]:size-6'
+export const bigTool = 'flex h-15 min-w-14 shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-md px-2 text-[0.72rem] font-semibold text-ink-soft transition-colors hover:bg-fill hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-40 aria-pressed:bg-brand-tint aria-pressed:text-brand [&>svg]:size-6'
 
 export const TableInsert: FC<{ onInsert: (rows: number, columns: number, headers: boolean) => void; disabled: boolean; big?: boolean }> = ({ onInsert, disabled, big = false }) => {
   const [open, setOpen] = useState(false)
@@ -314,6 +378,9 @@ export const TableInsert: FC<{ onInsert: (rows: number, columns: number, headers
   )
 }
 
+/** A new border's color, where the color panel starts */
+export const BORDER_START = '#0039a6'
+
 /**
  * Everything the toolbar and the ribbon do, in one place: what's at the cursor (for
  * pressed states and menus), and the changes (blocks, fonts and sizes, marks, colors,
@@ -342,22 +409,30 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
     let type: BlockType = 'paragraph'
     if ($isListNode(block)) {
       const list = $getNearestNodeOfType(anchor, ListNode) ?? block
-      type = list.getListType() === 'number' ? 'number' : 'bullet'
+      const listType = list.getListType()
+      type = listType === 'number' || listType === 'check' ? listType : 'bullet'
     } else if ($isHeadingNode(block)) {
       const tag = block.getTag()
-      type = tag === 'h1' || tag === 'h2' || tag === 'h3' ? tag : 'h3'
+      const hs = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+      type = hs.includes(tag) ? tag : 'h4'
     } else if ($isQuoteNode(block)) type = 'quote'
     else if ($isCalloutNode(block)) type = 'callout'
     else if ($isCodeNode(block)) type = 'code'
+    // Alignment is the line's own: a list item's, not the whole list's
+    const line = $findMatchingParent(anchor, (n) => $isElementNode(n) && !n.isInline())
     setState({
       block: type,
+      align: $isElementNode(line) ? line.getFormatType() : '',
       font: $getSelectionStyleValueForProperty(selection, 'font-family', ''),
       size: $getSelectionStyleValueForProperty(selection, 'font-size', ''),
       formats: new Set(FORMATS.map((f) => f.format).filter((f) => selection.hasFormat(f))),
       color: $getSelectionStyleValueForProperty(selection, 'color', ''),
       background: $getSelectionStyleValueForProperty(selection, 'background-color', ''),
       underlineColor: $getSelectionStyleValueForProperty(selection, 'text-decoration-color', ''),
+      underlineStyle: $getSelectionStyleValueForProperty(selection, 'text-decoration-style', ''),
       borderColor: $getSelectionStyleValueForProperty(selection, 'border-color', ''),
+      borderStyle: $getSelectionStyleValueForProperty(selection, 'border-style', ''),
+      borderWidth: $getSelectionStyleValueForProperty(selection, 'border-width', ''),
       inTable: $getTableCellNodeFromLexicalNode(anchor) !== null,
       headerRow: $hasHeaderRow(),
       inCode: type === 'code',
@@ -408,28 +483,25 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
   const setBlock = (type: BlockType) => {
     // A question is a line of its own, not a heading or a list; its answer can be anything
     if (state.faq === 'question') return
-    if (type === 'bullet' || type === 'number') {
-      editor.dispatchCommand(state.block === type ? REMOVE_LIST_COMMAND : type === 'bullet' ? INSERT_UNORDERED_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined)
+    if (state.block === type && (type === 'bullet' || type === 'number' || type === 'check')) {
+      editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined)
       editor.focus()
       return
     }
-    change(() => {
-      const selection = $getSelection()
-      if (!$isRangeSelection(selection)) return
-      // Choosing the block it's already in turns it back into a paragraph
-      const target = state.block === type ? 'paragraph' : type
-      $setBlocksType(selection, () =>
-        target === 'paragraph'
-          ? $createParagraphNode()
-          : target === 'quote'
-            ? $createQuoteNode()
-            : target === 'callout'
-              ? $createCalloutNode()
-              : target === 'code'
-                ? $createCodeNode()
-                : $createHeadingNode(target)
-      )
-    })
+    // Choosing the block it's already in turns it back into a paragraph
+    change(() => $setBlockType(editor, state.block === type ? 'paragraph' : type))
+  }
+
+  /** Aligns the cursor's block; the alignment it already has goes back to the default */
+  const setAlign = (format: ElementFormatType) => {
+    editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, state.align === format ? '' : format)
+    editor.focus()
+  }
+
+  /** Moves the cursor's block in or out a step; a list item nests under the one above */
+  const indent = (by: 1 | -1) => {
+    editor.dispatchCommand(by > 0 ? INDENT_CONTENT_COMMAND : OUTDENT_CONTENT_COMMAND, undefined)
+    editor.focus()
   }
 
   /** The tone of the callout the cursor's in */
@@ -450,25 +522,45 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
       { focus }
     )
 
-  /** Underline color only shows on underlined text, so picking one underlines it too */
+  /** An underline's color and type only show on underlined text, so picking one underlines it too */
+  const underlined = () => {
+    if (!state.formats.has('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')
+  }
   const underlineColor = (color: string | null, live?: boolean) => {
     style({ 'text-decoration-color': color }, !live)
-    if (color && !state.formats.has('underline')) editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline')
+    if (color) underlined()
   }
+  /** Solid is what an underline already is, so it isn't saved */
+  const setUnderlineType = (type: string) => {
+    style({ 'text-decoration-style': type === 'solid' ? null : type }, false)
+    underlined()
+  }
+  /** Back to a plain underline, in the text's own color */
+  const clearUnderline = () => style({ 'text-decoration-color': null, 'text-decoration-style': null })
 
-  /** A border is a thin rounded box around the words; "None" takes all of it off */
-  const borderColor = (color: string | null, live?: boolean) =>
+  /** A border is a box around the words: each change keeps the rest of its look, or starts from the usual one */
+  const border = (look: { color?: string; type?: string; width?: string }, focus: boolean) =>
     style(
-      color
-        ? { 'border-color': color, 'border-style': 'solid', 'border-width': '1.5px', 'border-radius': '4px', padding: '0 0.2em' }
-        : { 'border-color': null, 'border-style': null, 'border-width': null, 'border-radius': null, padding: null },
-      !live
+      {
+        'border-color': look.color ?? (state.borderColor || BORDER_START),
+        'border-style': look.type ?? (state.borderStyle || 'solid'),
+        'border-width': look.width ?? (state.borderWidth || '1.5px'),
+        'border-radius': '4px',
+        padding: '0 0.2em',
+      },
+      focus
     )
+  /** "None" takes all of it off */
+  const borderColor = (color: string | null, live?: boolean) =>
+    color ? border({ color }, !live) : style({ 'border-color': null, 'border-style': null, 'border-width': null, 'border-radius': null, padding: null }, !live)
+  /** Two lines need 3px to show as two */
+  const setBorderType = (type: string) => border({ type, width: type === 'double' && parseFloat(state.borderWidth || '0') < 3 ? '3px' : undefined }, false)
+  const setBorderWidth = (width: string) => border({ width }, false)
 
-  const currentSize = Number.parseInt(state.size, 10) || 16
+  const currentSize = pointsOf(state.size)
   const stepSize = (by: 1 | -1) => {
     const next = by > 0 ? sizes.find((s) => s > currentSize) : [...sizes].reverse().find((s) => s < currentSize)
-    if (next) style({ 'font-size': `${next}px` })
+    if (next) style({ 'font-size': `${next}pt` })
   }
 
   const table = (fn: () => void) => change(fn)
@@ -501,13 +593,13 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
     style({ 'font-family': `"${t}", sans-serif` })
   }
 
-  /** A typed size: "18" or "18px", from 8 to 96; nothing or "Default" for the normal size */
+  /** A typed size: "18" or "18pt", from 6 to 96, to the half point; nothing or "Default" for the normal size */
   const commitSize = (text: string) => {
     const t = text.trim().toLowerCase()
     if (!t || t === 'default') return style({ 'font-size': null })
-    const n = Number(t.replace(/px$/, ''))
-    if (!Number.isFinite(n) || n < 8 || n > 96) return false
-    style({ 'font-size': `${Math.round(n)}px` })
+    const n = Number(t.replace(/\s*pt$/, ''))
+    if (!Number.isFinite(n) || n < 6 || n > 96) return false
+    style({ 'font-size': `${Math.round(n * 2) / 2}pt` })
   }
   /** The FAQ tools: a question after the cursor's, taking the cursor's out, or the whole FAQ */
   const faq = (action: 'add' | 'remove' | 'delete') =>
@@ -529,7 +621,7 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
     editor.focus()
   }
 
-  return { setLink, editor, state, canUndo, canRedo, mod, change, setBlock, setCalloutTone, faq, style, underlineColor, borderColor, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText }
+  return { setLink, editor, state, canUndo, canRedo, mod, change, setBlock, setAlign, indent, setCalloutTone, faq, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText }
 }
 
 /**
@@ -538,7 +630,8 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
  */
 export function useRovingFocus(barRef: RefObject<HTMLElement | null>) {
   // Roving focus: arrows move between the toolbar's controls; Tab leaves it
-  const tools = () => [...(barRef.current?.querySelectorAll<HTMLElement>('[data-tool]:not(:disabled)') ?? [])]
+  // Not those in a toolbar of their own inside this one (the ribbon's More)
+  const tools = () => [...(barRef.current?.querySelectorAll<HTMLElement>('[data-tool]:not(:disabled)') ?? [])].filter((el) => el.closest('[role="toolbar"]') === barRef.current)
   useEffect(() => {
     const all = tools()
     all.forEach((el, i) => el.setAttribute('tabindex', i === 0 ? '0' : '-1'))
