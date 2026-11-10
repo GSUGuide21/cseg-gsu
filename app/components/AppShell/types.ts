@@ -16,6 +16,10 @@ export interface NavSection {
   items: NavItem[]
   /** Keeps these links at the bottom of the sidebar, always in view */
   pinned?: boolean
+  /** Lets the section fold shut under its heading (it needs a `label` to fold under) */
+  collapsible?: boolean
+  /** Whether a collapsible section starts open, until the person folds or opens it. Default true. */
+  defaultOpen?: boolean
 }
 
 export interface AppShellProps {

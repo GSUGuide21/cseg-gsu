@@ -1,0 +1,31 @@
+# How AWS Amplify Hosting builds the site. Without this file Amplify guesses, and its
+# default Node can be older than Next 16 needs (20.9 or newer).
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # The version in .nvmrc
+        - nvm install
+        - nvm use
+        - node --version
+        # Exactly what yarn.lock says; fails here, clearly, if the lockfile is out of date.
+        # Its postinstall copies the map's worker into public/vendor, which isn't committed.
+        - yarn install --frozen-lockfile
+    build:
+      commands:
+        - yarn build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
+backend:
+  phases:
+    build:
+      commands:
+        - rm -rf node_modules && yarn install --frozen-lockfile
+        - yarn ampx pipeline-deploy --branch master --app-id dupe0s70zsjfn

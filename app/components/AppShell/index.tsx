@@ -1,9 +1,9 @@
 'use client'
 
-import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState, type FC, type ReactNode } from 'react'
+import { useEffect, useId, useState, type FC, type ReactNode } from 'react'
 
 import { cn } from '@/lib/cn'
 
@@ -18,15 +18,53 @@ export const isActive = (item: NavItem, pathname: string) => {
   return pathname === href || pathname.startsWith(href.endsWith('/') ? href : `${href}/`)
 }
 
-const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; onNavigate?: () => void }> = ({ nav, pathname, collapsed, onNavigate }) => (
-  <div className={cn('flex flex-col', collapsed ? 'gap-2' : 'gap-5')}>
-    {nav.map((section, s) => (
+/** A section that folds: one with a heading to fold under, that asks to */
+const folds = (section: NavSection): section is NavSection & { label: string } => !!section.collapsible && !!section.label
+
+/** Which folding sections are open, by heading: as each starts out, then as the person left them */
+type Folds = Record<string, boolean>
+
+const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; open: Folds; onToggle: (label: string) => void; idPrefix: string; onNavigate?: () => void }> = ({
+  nav,
+  pathname,
+  collapsed,
+  open,
+  onToggle,
+  idPrefix,
+  onNavigate,
+}) => (
+  <div className={cn('flex flex-col', collapsed ? 'gap-2' : 'gap-4')}>
+    {nav.map((section, s) => {
+      // Narrowed to icons there are no headings to fold under, so every link shows
+      const folding = folds(section) && !collapsed
+      const shown = !folding || (open[section.label!] ?? section.defaultOpen ?? true)
+      const listId = `${idPrefix}-${s}`
+      // Folded shut, the heading carries what its links would have: how many are waiting
+      const waiting = section.items.reduce((sum, i) => sum + (i.count ?? 0), 0)
+      return (
       // Narrowed to icons there are no headings, so a line tells the sections apart
       <div key={s} className={cn('flex flex-col gap-1', collapsed && s > 0 && 'border-t border-line pt-2')}>
-        {section.label ? (
+        {folding ? (
+          <button
+            type="button"
+            aria-expanded={shown}
+            aria-controls={listId}
+            onClick={() => onToggle(section.label!)}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left text-[0.7rem] font-bold tracking-wider text-muted uppercase transition-colors hover:bg-brand-tint hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+          >
+            <span className="min-w-0 flex-1 truncate">{section.label}</span>
+            {!shown && waiting ? (
+              <span className="min-w-5 rounded-full bg-brand-solid px-1.5 py-0.5 text-center text-[0.7rem] leading-none tracking-normal text-white tabular-nums">
+                {waiting}
+                <span className="sr-only"> waiting</span>
+              </span>
+            ) : null}
+            <ChevronDown size={14} aria-hidden className={cn('shrink-0 transition-transform duration-200 motion-reduce:transition-none', !shown && '-rotate-90')} />
+          </button>
+        ) : section.label ? (
           <p className={cn('m-0 px-3 pb-1 text-[0.7rem] font-bold tracking-wider text-muted uppercase', collapsed && 'sr-only')}>{section.label}</p>
         ) : null}
-        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+        <ul id={listId} hidden={!shown} className={cn('m-0 list-none flex-col gap-0.5 p-0', shown && 'flex')}>
           {section.items.map((item) => {
             const on = isActive(item, pathname)
             const link = (
@@ -68,7 +106,8 @@ const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; on
           })}
         </ul>
       </div>
-    ))}
+      )
+    })}
   </div>
 )
 
@@ -88,6 +127,10 @@ const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; on
  * between a fixed top and bottom if they don't fit. It can be narrowed to icons, and with
  * `persistKey` it stays that way. On narrow screens it's behind a menu button, in a panel
  * that slides in. The link to the page being viewed is marked aria-current="page".
+ *
+ * A section marked `collapsible` folds under its heading, so a long sidebar shows only the
+ * parts in use. Going to a page opens the section it's in; with `persistKey`, which are
+ * open is remembered too. Folded shut, a heading shows how many of its links' counts wait.
  */
 export const AppShell: FC<AppShellProps> = ({ nav, brand, brandMark, topbar, sidebarFooter, children, defaultCollapsed = false, persistKey, 'aria-label': ariaLabel = 'Dashboard', className }) => {
   const pathname = usePathname() ?? ''
@@ -97,6 +140,42 @@ export const AppShell: FC<AppShellProps> = ({ nav, brand, brandMark, topbar, sid
   const [menuOpen, setMenuOpen] = useState(false)
   const links = nav.filter((s) => !s.pinned)
   const pinned = nav.filter((s) => s.pinned)
+  const [open, setOpen] = useState<Folds>({})
+  const navId = useId()
+  const foldsKey = persistKey ? `${persistKey}:sections` : null
+
+  const saveFolds = (next: Folds) => {
+    if (!foldsKey) return
+    try {
+      window.localStorage.setItem(foldsKey, JSON.stringify(next))
+    } catch {
+      // Storage is off: it just won't be remembered
+    }
+  }
+
+  // Which sections were left open, once there's a browser to ask
+  useEffect(() => {
+    if (!foldsKey) return
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(foldsKey) ?? 'null')
+      if (saved && typeof saved === 'object') setOpen((now) => ({ ...(saved as Folds), ...now }))
+    } catch {
+      // Unreadable, or storage is off: each section starts as it's set to
+    }
+  }, [foldsKey])
+
+  // The page being viewed is never folded away: arriving somewhere opens its section
+  const here = nav.find((s) => folds(s) && s.items.some((i) => isActive(i, pathname)))?.label
+  useEffect(() => {
+    if (here) setOpen((now) => (now[here] ? now : { ...now, [here]: true }))
+  }, [here])
+
+  const toggleSection = (label: string) => {
+    const section = nav.find((s) => s.label === label)
+    const next = { ...open, [label]: !(open[label] ?? section?.defaultOpen ?? true) }
+    setOpen(next)
+    saveFolds(next)
+  }
 
   // The browser's saved choice, once there's a browser to ask
   useEffect(() => {
@@ -158,12 +237,12 @@ export const AppShell: FC<AppShellProps> = ({ nav, brand, brandMark, topbar, sid
         {/* Lines up with the top bar beside it */}
         {brand ? <div className={cn('flex min-h-14 shrink-0 items-center border-b border-line', collapsed ? 'justify-center' : 'px-5')}>{collapsed ? brandMark : brand}</div> : null}
         <nav aria-label={ariaLabel} className={cn('min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-4 scrollbar-thin', collapsed ? 'px-2' : 'px-3')}>
-          <NavLinks nav={links} pathname={pathname} collapsed={collapsed} />
+          <NavLinks nav={links} pathname={pathname} collapsed={collapsed} open={open} onToggle={toggleSection} idPrefix={`${navId}-side`} />
         </nav>
         <div className={cn('flex shrink-0 flex-col gap-1 border-t border-line py-3', collapsed ? 'px-2' : 'px-3')}>
           {pinned.length ? (
             <nav aria-label={`${ariaLabel}, more`}>
-              <NavLinks nav={pinned} pathname={pathname} collapsed={collapsed} />
+              <NavLinks nav={pinned} pathname={pathname} collapsed={collapsed} open={open} onToggle={toggleSection} idPrefix={`${navId}-pinned`} />
             </nav>
           ) : null}
           {sidebarFooter ? <div className={cn(collapsed && 'flex justify-center')}>{sidebarFooter}</div> : null}
@@ -190,7 +269,7 @@ export const AppShell: FC<AppShellProps> = ({ nav, brand, brandMark, topbar, sid
 
       <Offcanvas open={menuOpen} onClose={() => setMenuOpen(false)} side="left" size="sm" title={brand ?? ariaLabel}>
         <nav aria-label={ariaLabel} className="flex flex-col gap-5">
-          <NavLinks nav={nav} pathname={pathname} collapsed={false} onNavigate={() => setMenuOpen(false)} />
+          <NavLinks nav={nav} pathname={pathname} collapsed={false} open={open} onToggle={toggleSection} idPrefix={`${navId}-menu`} onNavigate={() => setMenuOpen(false)} />
           {sidebarFooter ? <div className="border-t border-line pt-3">{sidebarFooter}</div> : null}
         </nav>
       </Offcanvas>

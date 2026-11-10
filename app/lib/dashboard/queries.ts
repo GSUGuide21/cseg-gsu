@@ -280,14 +280,6 @@ export async function pendingRequestCount() {
   return error ? 0 : (count ?? 0)
 }
 
-/** RSVP counts by event id */
-export async function rsvpCounts() {
-  const { supabase } = await requireOfficer()
-  const counts = new Map<string, number>()
-  for (const r of orEmpty(await supabase.from('event_rsvps').select('event_id'))) counts.set(r.event_id, (counts.get(r.event_id) ?? 0) + 1)
-  return counts
-}
-
 // ── Questions, redirects, minutes, sponsors ─────────────────────────────────
 
 /** /about's common questions, shown or hidden, in the page's order */

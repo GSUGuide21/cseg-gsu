@@ -20,10 +20,18 @@ const ROLE_WORDS: Record<OfficerRole, string> = { editor: 'Editor', officer: 'Of
 /** What's about people, which an editor (who only writes the site) doesn't get */
 const STAFF_ONLY = new Set(['/dashboard/messages', '/dashboard/members', '/dashboard/requests', '/dashboard/dues', '/dashboard/minutes'])
 
-/** The sidebar; Messages shows how many are unread, and Join requests how many are waiting */
+/**
+ * The sidebar, in sections that fold: Messages shows how many are unread, and Join requests
+ * how many are waiting. People and Club start open and the rest folded, except for an
+ * editor, whose work is the site: Content starts open for them.
+ */
 export const navFor = (unread: number, pending = 0, role: OfficerRole = 'officer'): NavSection[] =>
   ALL_NAV(unread, pending)
-    .map((section) => ({ ...section, items: section.items.filter((i) => role !== 'editor' || !STAFF_ONLY.has(i.href)) }))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((i) => role !== 'editor' || !STAFF_ONLY.has(i.href)),
+      ...(section.label === 'Content' && role === 'editor' ? { defaultOpen: true } : {}),
+    }))
     .filter((section) => section.items.length)
 
 const ALL_NAV = (unread: number, pending: number): NavSection[] => [
@@ -34,13 +42,20 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
     ],
   },
   {
-    label: 'Club',
+    label: 'People',
+    collapsible: true,
     items: [
       { label: 'Members', href: '/dashboard/members', icon: <Users /> },
       { label: 'Join requests', href: '/dashboard/requests', icon: <UserPlus />, count: pending || undefined },
       { label: 'Dues', href: '/dashboard/dues', icon: <Wallet /> },
-      { label: 'Events', href: '/dashboard/events', icon: <CalendarDays /> },
       { label: 'Minutes', href: '/dashboard/minutes', icon: <NotebookPen /> },
+    ],
+  },
+  {
+    label: 'Club',
+    collapsible: true,
+    items: [
+      { label: 'Events', href: '/dashboard/events', icon: <CalendarDays /> },
       { label: 'Executives', href: '/dashboard/executives', icon: <UserRoundCog /> },
       { label: 'Affiliates', href: '/dashboard/affiliates', icon: <Handshake /> },
       { label: 'Sponsors', href: '/dashboard/sponsors', icon: <BadgeDollarSign /> },
@@ -48,6 +63,8 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
   },
   {
     label: 'Content',
+    collapsible: true,
+    defaultOpen: false,
     items: [
       { label: 'Homepage', href: '/dashboard/homepage', icon: <LayoutTemplate /> },
       { label: 'Posts', href: '/dashboard/posts', icon: <Newspaper /> },
@@ -60,6 +77,8 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
   },
   {
     label: 'Campus guide',
+    collapsible: true,
+    defaultOpen: false,
     items: [
       { label: 'Map', href: '/dashboard/map', icon: <MapPin /> },
       { label: 'Shortcuts', href: '/dashboard/connections', icon: <Route /> },
@@ -79,7 +98,7 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
 const Brand: FC<{ mark?: boolean }> = ({ mark }) => (
   <span className="flex items-center gap-2.5 font-bold text-ink">
     <LogoMark size={32} />
-    {mark ? <span className="sr-only">CSEG dashboard</span> : 'CSEG dashboard'}
+    {mark ? <span className="sr-only">Dashboard</span> : 'Dashboard'}
   </span>
 )
 

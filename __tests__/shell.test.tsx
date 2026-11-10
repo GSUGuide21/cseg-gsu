@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 
 import { AppShell, CommandPalette, DescriptionList, Dialog, Divider, EmptyState, isActive } from '@/components'
 
@@ -175,5 +175,74 @@ describe('Small pieces', () => {
       </>
     )
     expect(screen.getAllByRole('separator')).toHaveLength(2)
+  })
+})
+
+describe('AppShell sections that fold', () => {
+  // The page being viewed is /dashboard/members/42, in People
+  const nav = [
+    { label: 'People', collapsible: true, items: [{ label: 'Members', href: '/dashboard/members' }] },
+    {
+      label: 'Content',
+      collapsible: true,
+      defaultOpen: false,
+      items: [
+        { label: 'Posts', href: '/dashboard/posts', count: 2 },
+        { label: 'Pages', href: '/dashboard/pages', count: 1 },
+      ],
+    },
+    { label: 'Fixed', items: [{ label: 'Media', href: '/dashboard/media' }] },
+  ]
+  const side = () => screen.getAllByRole('navigation', { name: 'Dashboard' })[0]
+  const heading = (name: RegExp) => within(side()).getByRole('button', { name })
+  beforeEach(() => window.localStorage.clear())
+
+  it('starts each as it’s set, and folds and opens from its heading', () => {
+    render(<AppShell nav={nav}>Page</AppShell>)
+    expect(heading(/People/)).toHaveAttribute('aria-expanded', 'true')
+    expect(heading(/Content/)).toHaveAttribute('aria-expanded', 'false')
+    expect(within(side()).queryByRole('link', { name: /Posts/ })).not.toBeInTheDocument()
+    fireEvent.click(heading(/Content/))
+    expect(within(side()).getByRole('link', { name: /Posts/ })).toBeInTheDocument()
+    // A section that doesn't ask to fold keeps a plain heading
+    expect(within(side()).queryByRole('button', { name: /Fixed/ })).not.toBeInTheDocument()
+    expect(within(side()).getByRole('link', { name: 'Media' })).toBeInTheDocument()
+  })
+
+  it('says how many are waiting under a folded heading', () => {
+    render(<AppShell nav={nav}>Page</AppShell>)
+    expect(heading(/Content/)).toHaveTextContent('3 waiting')
+    fireEvent.click(heading(/Content/))
+    expect(heading(/Content/)).not.toHaveTextContent('waiting')
+  })
+
+  it('opens the section of the page being viewed, even one set to start folded', () => {
+    const folded = [{ ...nav[0], defaultOpen: false }, nav[1]]
+    render(<AppShell nav={folded}>Page</AppShell>)
+    expect(heading(/People/)).toHaveAttribute('aria-expanded', 'true')
+    expect(side().querySelector('[aria-current="page"]')).toHaveTextContent('Members')
+  })
+
+  it('remembers which were left open', () => {
+    const { unmount } = render(
+      <AppShell nav={nav} persistKey="side">
+        Page
+      </AppShell>
+    )
+    fireEvent.click(heading(/Content/))
+    unmount()
+    render(
+      <AppShell nav={nav} persistKey="side">
+        Page
+      </AppShell>
+    )
+    expect(heading(/Content/)).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('shows every link when narrowed to icons, folded or not', () => {
+    render(<AppShell nav={nav}>Page</AppShell>)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(within(side()).getByRole('link', { name: /Posts/ })).toBeInTheDocument()
+    expect(within(side()).queryByRole('button', { name: /Content/ })).not.toBeInTheDocument()
   })
 })
