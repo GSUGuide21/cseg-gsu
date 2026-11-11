@@ -23,9 +23,5 @@ frontend:
     paths:
       - node_modules/**/*
       - .next/cache/**/*
-backend:
-  phases:
-    build:
-      commands:
-        - rm -rf node_modules && yarn install --frozen-lockfile
-        - yarn ampx pipeline-deploy --branch master --app-id dupe0s70zsjfn
+# No backend phase: the data lives in Supabase and there is no amplify/ folder, so
+# `ampx pipeline-deploy` has nothing to deploy and fails the build.
