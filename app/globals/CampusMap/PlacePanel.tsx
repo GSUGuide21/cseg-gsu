@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowUpRight, Route as RouteIcon } from 'lucide-react'
 import { type FC, useEffect, useRef, useState } from 'react'
 
+import { InsiderTip } from '@/globals/InsiderTip'
 import { button } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 import { PLACE_CATEGORIES, type Place } from '@/lib/data/places'
@@ -66,6 +67,7 @@ export const PlacePanel: FC<PlacePanelProps> = ({ place, room, status, away, tak
             </p>
           ) : null}
           <p className="text-[0.9rem] leading-relaxed text-ink-soft">{place.description}</p>
+          {place.tip ? <InsiderTip tip={place.tip} /> : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" onClick={() => onRoute(place.id)} className={button({ size: 'sm' })}>
               <RouteIcon size={15} aria-hidden />

@@ -181,6 +181,22 @@ export async function listPages() {
   return must(await supabase.from('pages').select('id, slug, title, status, updated_at, updated_by, publish_at, unpublish_at, review_requested, review_note').order('title'))
 }
 
+/** Every page's name and address, and the page it sits under, for the editor's "Sits under" */
+export async function listPageTree() {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('pages').select('id, slug, title, parent_id').order('title')
+  // Before the migration that adds parents has run: the pages, all at the top
+  if (error) return must(await supabase.from('pages').select('id, slug, title').order('title'))
+  return data
+}
+
+/** The campus guides' collections of picks, in order; null before their migration has run */
+export async function listGuidePicks() {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('guide_picks').select('*').order('guide').order('sort').order('title')
+  return error ? null : data
+}
+
 export async function getPage(id: string) {
   const { supabase } = await requireOfficer()
   return must<PageRow | null>(await supabase.from('pages').select('*').eq('id', id).maybeSingle())

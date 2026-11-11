@@ -15,6 +15,8 @@ import {
   PAGE_SUBTITLE_MAX as SUBTITLE_MAX,
   SECTION_TITLE_MAX,
   type BannerTone,
+  type GuideKind,
+  type NavPlacement,
   type ClubSettingsRow,
   type DuesMethod,
   type EventStatus,
@@ -134,6 +136,25 @@ export const isPublicUrl = (url: string) => {
   return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))
 }
 
+/** Where the site's menu can list a page */
+export const NAV_PLACEMENTS: readonly { value: NavPlacement; label: string }[] = [
+  { value: 'none', label: 'Not in the menu' },
+  { value: 'header', label: 'Top menu' },
+  { value: 'footer', label: 'Footer' },
+  { value: 'both', label: 'Top menu and footer' },
+]
+export const NAV_LABEL_MAX = 40
+
+/** A tip's length, as the database checks it too */
+export const TIP_MAX = 240
+
+/** A short tip in a student's voice, on a place, an eatery, or a resource */
+const parseTip = (form: FormData, errors: FieldErrors) => {
+  const tip = optional(form.get('tip'))
+  if (tip && tip.length > TIP_MAX) errors.tip = `Keep it under ${TIP_MAX} characters.`
+  return tip
+}
+
 export function parseDocument(form: FormData) {
   const errors: FieldErrors = {}
   const title = text(form.get('title'))
@@ -171,6 +192,13 @@ export function parseDocument(form: FormData) {
   }
   const category = optional(form.get('category'))
   if (category && !POST_CATEGORIES.some((c) => c.value === category)) errors.category = 'Pick one of the categories.'
+  // A page's place on the site: the page it sits under, and where the menu lists it
+  const parent = optional(form.get('parent_id'))
+  if (parent && !UUID.test(parent)) errors.parent_id = 'Pick one of the pages.'
+  const placement = (text(form.get('nav_placement')) || 'none') as NavPlacement
+  if (!NAV_PLACEMENTS.some((p) => p.value === placement)) errors.nav_placement = 'Pick where the menu lists it.'
+  const navLabel = optional(form.get('nav_label'))
+  if (navLabel && navLabel.length > NAV_LABEL_MAX) errors.nav_label = `Keep it under ${NAV_LABEL_MAX} characters.`
   const publishAt = when('publish_at')
   const unpublishAt = when('unpublish_at')
   if (publishAt && unpublishAt && unpublishAt <= publishAt) errors.unpublish_at = 'Take it down after it goes up.'
@@ -182,6 +210,10 @@ export function parseDocument(form: FormData) {
     share_image_url: share,
     show_toc: form.get('show_toc') === 'on',
     show_updated: form.get('show_updated') === 'on',
+    parent_id: parent,
+    nav_placement: placement,
+    nav_label: navLabel,
+    nav_sort: Math.trunc(Number(text(form.get('nav_sort')) || 0)) || 0,
     category,
     featured: form.get('featured') === 'on',
     review_requested: form.get('review_requested') === 'on',
@@ -219,6 +251,7 @@ export function parsePlace(form: FormData) {
     lng,
     address: optional(form.get('address')),
     description: text(form.get('description')),
+    tip: parseTip(form, errors),
     published: form.get('published') === 'on',
   })
 }
@@ -283,6 +316,7 @@ export function parseEatery(form: FormData, existingSlug: string | null) {
   const url = optional(form.get('url'))
   if (url && !/^https?:\/\//.test(url)) errors.url = 'Use a full link, starting with https://.'
   const sort = Number(text(form.get('sort')) || 0)
+  const tip = parseTip(form, errors)
 
   return done(errors, {
     slug,
@@ -304,6 +338,7 @@ export function parseEatery(form: FormData, existingSlug: string | null) {
     sort: Number.isInteger(sort) ? sort : 0,
     published: form.get('published') === 'on',
     checked_on: DATE.test(text(form.get('checked_on'))) ? text(form.get('checked_on')) : null,
+    tip,
   })
 }
 
@@ -365,6 +400,7 @@ export function parseResource(form: FormData, existingSlug: string | null) {
     href,
     description: text(form.get('description')),
     place_id: optional(form.get('place_id')),
+    tip: parseTip(form, errors),
     sort: Number(text(form.get('sort')) || 0) || 0,
     published: form.get('published') === 'on',
   })
@@ -790,6 +826,31 @@ export function parseFaq(form: FormData) {
   if (!answer) errors.answer = 'Add its answer.'
   else if (answer.length > FAQ_LIMITS.answer) errors.answer = `Keep it under ${FAQ_LIMITS.answer} characters.`
   return done(errors, { question, answer, published: form.get('published') === 'on' })
+}
+
+/** The campus guides a collection of picks can be featured on, and what each one's picks are made of */
+export const GUIDE_KINDS: Record<GuideKind, { label: string; items: string; shown: string }> = {
+  eat: { label: 'Places to eat', items: 'eateries', shown: 'At the top of Places to eat' },
+  resources: { label: 'Resources', items: 'resources', shown: 'At the top of Resources' },
+  map: { label: 'Campus map', items: 'places', shown: 'Under the campus map' },
+}
+export const PICK_LIMITS = { title: 80, description: 240, items: 12 } as const
+
+/** A collection of picks: which guide, what it's called, and what's in it (ids, in order) */
+export function parseGuidePick(form: FormData) {
+  const errors: FieldErrors = {}
+  const guide = text(form.get('guide')) as GuideKind
+  const title = text(form.get('title')).replace(/\s+/g, ' ')
+  const description = optional(form.get('description'))
+  const icon = text(form.get('icon'))
+  const items = [...new Set(form.getAll('items').map((i) => text(i)).filter(Boolean))]
+  if (!Object.hasOwn(GUIDE_KINDS, guide)) errors.guide = 'Pick a guide.'
+  if (!title) errors.title = 'Give it a name.'
+  else if (title.length > PICK_LIMITS.title) errors.title = `Keep it under ${PICK_LIMITS.title} characters.`
+  if (description && description.length > PICK_LIMITS.description) errors.description = `Keep it under ${PICK_LIMITS.description} characters.`
+  if (!items.length) errors.items = 'Pick at least one.'
+  else if (items.length > PICK_LIMITS.items) errors.items = `Keep it to ${PICK_LIMITS.items}; a short list is the point.`
+  return done(errors, { guide, title, description, icon: Object.hasOwn(CARD_ICONS, icon) ? icon : 'star', items, published: form.get('published') === 'on' })
 }
 
 /** Addresses the site itself answers, which a redirect can't take over */

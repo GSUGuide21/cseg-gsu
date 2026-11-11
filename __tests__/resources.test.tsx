@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 // No dashboard version published: the page in the code shows (and nothing asks Supabase)
 jest.mock('../app/lib/dashboard/public', () => {
   const { BUILT_IN_RESOURCE_GROUPS: groups, BUILT_IN_RESOURCES: resources } = jest.requireActual('../app/lib/resources')
-  return { getPublishedPage: jest.fn(async () => null), getResources: jest.fn(async () => ({ groups, resources })) }
+  return { getPublishedPage: jest.fn(async () => null), getResources: jest.fn(async () => ({ groups, resources })), getGuidePicks: jest.fn(async () => []) }
 })
 import ResourcesPage from '../app/(page)/resources/page'
 import { getPlace } from '../app/lib/data/places'

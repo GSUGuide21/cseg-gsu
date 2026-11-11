@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { atlantaToday } from '@/lib/eateries'
+import { isReservedSlug, isSitePage } from '@/lib/sitePages'
 import { createPublicClient } from '@/lib/supabase/server'
 import type { PageRow, PostRow } from '@/lib/supabase/types'
 
@@ -25,6 +26,7 @@ import {
   parseEvent,
   parseExecutive,
   parseFaq,
+  parseGuidePick,
   parseGroups,
   parseHomepage,
   parseJoinRequest,
@@ -63,6 +65,20 @@ const failure = (error: { code?: string; message: string }, what = 'That'): Acti
  * rather than only its own address. The site is small; this is cheap.
  */
 const revalidateSite = () => revalidatePath('/', 'layout')
+
+/**
+ * Columns from the newest migration. Until it has run the database doesn't know them, so a
+ * save that names one is tried again without them: everything else still saves.
+ */
+const NEW_COLUMNS = new Set(['tip', 'parent_id', 'nav_placement', 'nav_label', 'nav_sort'])
+const isMissingColumn = (error: { code?: string } | null) => error?.code === 'PGRST204' || error?.code === '42703'
+const withoutNewColumns = <T extends object>(values: T) => Object.fromEntries(Object.entries(values).filter(([k]) => !NEW_COLUMNS.has(k))) as T
+
+/** Runs a save, and once more without the newest columns if the database doesn't have them yet */
+const saving = async <T extends object, R extends { error: { code?: string; message: string } | null }>(values: T, write: (values: T) => PromiseLike<R>): Promise<R> => {
+  const result = await write(values)
+  return isMissingColumn(result.error) ? write(withoutNewColumns(values)) : result
+}
 
 /** A review is for drafts, so publishing settles it */
 const reviewOf = ({ status, review_requested, review_note }: { status: string; review_requested: boolean; review_note: string | null }) =>
@@ -185,12 +201,18 @@ export async function savePage(id: string | null, form: FormData): Promise<Actio
   const { supabase } = await requireOfficer()
   const parsed = parseDocument(form)
   if (!parsed.ok) return parsed
-  const { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at } = parsed.data
-  const values = { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, ...reviewOf(parsed.data) }
-  const { data, error } = id
-    ? await supabase.from('pages').update(values).eq('id', id).select('id').single()
-    : await supabase.from('pages').insert(values).select('id').single()
-  if (error) return failure(error, 'That web address')
+  const { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, nav_placement, nav_label, nav_sort } = parsed.data
+  if (isReservedSlug(slug)) return { ok: false, errors: { slug: `The site already uses /${slug} for something else. Pick another address.` } }
+  // One of the site's own pages stays at its own path, so it can't sit under another
+  const parent_id = isSitePage(slug) || parsed.data.parent_id === id ? null : parsed.data.parent_id
+  const values = { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, parent_id, nav_placement, nav_label, nav_sort, ...reviewOf(parsed.data) }
+  const { data, error } = await saving(values, (v) =>
+    id ? supabase.from('pages').update(v).eq('id', id).select('id').single() : supabase.from('pages').insert(v).select('id').single()
+  )
+  // The database keeps pages one level deep, and says which way it broke
+  if (error?.code === 'P0001') return { ok: false, errors: { parent_id: error.message } }
+  if (error?.code === '23503') return { ok: false, errors: { parent_id: 'That page is gone; pick another.' } }
+  if (error || !data) return failure(error ?? { message: 'That didn’t save.' }, 'That web address')
   await log(supabase, id ? 'updated page' : 'created page', title)
   revalidateSite()
   return { ok: true, id: data.id, message: savedMessage(status, publish_at) }
@@ -319,10 +341,10 @@ export async function savePlace(id: string | null, form: FormData): Promise<Acti
   const { supabase } = await requireOfficer()
   const parsed = parsePlace(form)
   if (!parsed.ok) return parsed
-  const { data, error } = id
-    ? await supabase.from('map_places').update(parsed.data).eq('id', id).select('id').single()
-    : await supabase.from('map_places').insert(parsed.data).select('id').single()
-  if (error) return failure(error)
+  const { data, error } = await saving(parsed.data, (v) =>
+    id ? supabase.from('map_places').update(v).eq('id', id).select('id').single() : supabase.from('map_places').insert(v).select('id').single()
+  )
+  if (error || !data) return failure(error ?? { message: 'That didn’t save.' })
   await log(supabase, id ? 'updated map pin' : 'added map pin', parsed.data.name)
   revalidatePath('/dashboard/map')
   revalidatePath('/map')
@@ -362,15 +384,15 @@ export async function saveEatery(id: string | null, form: FormData): Promise<Act
   if (id && !existing) return { ok: false, error: 'That eatery is gone; it may have been deleted.' }
   const parsed = parseEatery(form, existing?.slug ?? null)
   if (!parsed.ok) return parsed
-  const { data, error } = id
-    ? await supabase.from('eateries').update(parsed.data).eq('id', id).select('id').single()
-    : await supabase.from('eateries').insert(parsed.data).select('id').single()
-  if (error)
-    return error.code === '23505'
+  const { data, error } = await saving(parsed.data, (v) =>
+    id ? supabase.from('eateries').update(v).eq('id', id).select('id').single() : supabase.from('eateries').insert(v).select('id').single()
+  )
+  if (error || !data)
+    return error?.code === '23505'
       ? { ok: false, errors: { name: 'Another eatery already has this name.' } }
-      : error.code === '23503'
+      : error?.code === '23503'
         ? { ok: false, errors: { area: 'That area is gone; pick another.' } }
-        : failure(error)
+        : failure(error ?? { message: 'That didn’t save.' })
   await log(supabase, id ? 'updated eatery' : 'added eatery', parsed.data.name)
   revalidateEateries()
   return { ok: true, id: data.id, message: parsed.data.published ? 'Saved' : 'Saved (hidden from the site)' }
@@ -511,7 +533,7 @@ export async function deleteExecutive(id: string): Promise<ActionResult> {
 const revalidateAffiliates = revalidateSite
 
 /** One past the end of a list ordered by sort, for something just added */
-const nextSort = async (supabase: Supabase, table: 'affiliates' | 'map_connections' | 'faqs' | 'sponsors') => {
+const nextSort = async (supabase: Supabase, table: 'affiliates' | 'map_connections' | 'faqs' | 'sponsors' | 'guide_picks') => {
   const { data } = await supabase.from(table).select('sort').order('sort', { ascending: false }).limit(1).maybeSingle()
   return (data?.sort ?? 0) + 10
 }
@@ -644,15 +666,15 @@ export async function saveResource(id: string | null, form: FormData): Promise<A
   if (id && !existing) return { ok: false, error: 'That resource is gone; it may have been deleted.' }
   const parsed = parseResource(form, existing?.slug ?? null)
   if (!parsed.ok) return parsed
-  const { data, error } = id
-    ? await supabase.from('resources').update(parsed.data).eq('id', id).select('id').single()
-    : await supabase.from('resources').insert(parsed.data).select('id').single()
-  if (error)
-    return error.code === '23505'
+  const { data, error } = await saving(parsed.data, (v) =>
+    id ? supabase.from('resources').update(v).eq('id', id).select('id').single() : supabase.from('resources').insert(v).select('id').single()
+  )
+  if (error || !data)
+    return error?.code === '23505'
       ? { ok: false, errors: { label: 'Another resource already has this name.' } }
-      : error.code === '23503'
+      : error?.code === '23503'
         ? { ok: false, errors: { group_slug: 'That group is gone; pick another.' } }
-        : failure(error)
+        : failure(error ?? { message: 'That didn’t save.' })
   await log(supabase, id ? 'updated resource' : 'added resource', parsed.data.label)
   revalidateResources()
   return { ok: true, id: data.id, message: parsed.data.published ? 'Saved' : 'Saved (hidden from the site)' }
@@ -919,6 +941,53 @@ export async function reorderFaqs(ids: string[]): Promise<ActionResult> {
   if (failed) return failure(failed)
   await log(supabase, 'reordered questions')
   revalidateSite()
+  return { ok: true, message: 'Order saved' }
+}
+
+// ── Curated picks ───────────────────────────────────────────────────────────
+
+/** The guides' own pages, and the dashboard's list */
+const revalidatePicks = () => {
+  revalidateSite()
+  revalidatePath('/dashboard/picks')
+}
+
+/** A collection for one of the campus guides: a name, a line about it, and what's in it */
+export async function saveGuidePick(id: string | null, form: FormData): Promise<ActionResult> {
+  const { supabase } = await requireOfficer()
+  const parsed = parseGuidePick(form)
+  if (!parsed.ok) return parsed
+  const { data, error } = id
+    ? await supabase.from('guide_picks').update(parsed.data).eq('id', id).select('id').maybeSingle()
+    : await supabase
+        .from('guide_picks')
+        .insert({ ...parsed.data, sort: await nextSort(supabase, 'guide_picks') })
+        .select('id')
+        .single()
+  if (error) return failure(error)
+  if (!data) return { ok: false, error: 'That collection is gone; it may have been removed.' }
+  await log(supabase, id ? 'updated picks' : 'added picks', parsed.data.title)
+  revalidatePicks()
+  return { ok: true, id: data.id, message: parsed.data.published ? 'Saved' : 'Saved (hidden from the site)' }
+}
+
+export async function deleteGuidePick(id: string): Promise<ActionResult> {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('guide_picks').delete().eq('id', id).select('title').maybeSingle()
+  if (error) return failure(error)
+  await log(supabase, 'removed picks', data?.title)
+  revalidatePicks()
+  return { ok: true }
+}
+
+/** The collections in a new order, as dragged: first to last */
+export async function reorderGuidePicks(ids: string[]): Promise<ActionResult> {
+  const { supabase } = await requireOfficer()
+  const results = await Promise.all(ids.map((id, i) => supabase.from('guide_picks').update({ sort: (i + 1) * 10 }).eq('id', id)))
+  const failed = results.find((r) => r.error)?.error
+  if (failed) return failure(failed)
+  await log(supabase, 'reordered picks')
+  revalidatePicks()
   return { ok: true, message: 'Order saved' }
 }
 

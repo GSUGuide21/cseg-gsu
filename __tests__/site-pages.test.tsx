@@ -22,6 +22,8 @@ jest.mock('../app/lib/dashboard/public', () => ({
   getClubDetails: jest.fn(async () => club),
   // No questions from the dashboard: About keeps its own
   getFaqs: jest.fn(async () => []),
+  getPageAt: jest.fn(async () => null),
+  getPageRedirect: jest.fn(async () => null),
 }))
 
 // The Contact page's form sends through a server action
@@ -132,6 +134,10 @@ describe('the site’s pages, as dashboard pages', () => {
       publish_at: null,
       review_requested: false,
       review_note: null,
+      parent_id: null,
+      nav_placement: 'none',
+      nav_label: null,
+      nav_sort: 0,
       unpublish_at: null,
       layout: 'sections',
       body: '',
@@ -146,7 +152,11 @@ describe('the site’s pages, as dashboard pages', () => {
 
   it('sends a site page’s /pages address to its own', async () => {
     expect(pageHref('about')).toBe('/about')
-    expect(pageHref('guide')).toBe('/pages/guide')
+    // A page officers wrote is at its own address, or under its parent's
+    expect(pageHref('guide')).toBe('/guide')
+    expect(pageHref('parking', 'guide')).toBe('/guide/parking')
+    expect(pageHref('history', 'about')).toBe('/about/history')
+    expect(pageHref('about', 'guide')).toBe('/about')
     await expect(CustomPage({ params: Promise.resolve({ slug: 'about' }) })).rejects.toThrow(/NEXT_REDIRECT/)
   })
 })

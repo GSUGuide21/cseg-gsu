@@ -7,7 +7,7 @@ import { useMemo, useState, type FC } from 'react'
 import { ActionMenu, Badge, Button, Dialog, EmptyState, Table, useNotify } from '@/components'
 import { DatePicker, Field, Input, NumberInput, Select, Switch, TagInput, TextArea } from '@/components/Form'
 import { deleteEatery, markEateriesChecked, reorderEateries, saveAreas, saveEatery } from '@/lib/dashboard/actions'
-import { coordsFrom } from '@/lib/dashboard/validate'
+import { coordsFrom, TIP_MAX } from '@/lib/dashboard/validate'
 import { PLACES } from '@/lib/data/places'
 import { atlantaToday, shortDate } from '@/lib/eateries'
 import type { EateryAreaRow, EateryClosureRow, EateryRow, HoursRangeJson } from '@/lib/supabase/types'
@@ -119,6 +119,9 @@ const EateryDialog: FC<{ eatery: EateryRow | null; areas: EateryAreaRow[]; nextS
         </Field>
         <Field label="Description">
           <TextArea name="description" rows={3} defaultValue={eatery?.description ?? ''} />
+        </Field>
+        <Field label="Insider tip" error={errors.tip} description="Optional. A line of advice in a student’s voice, set apart on its card.">
+          <Input name="tip" defaultValue={eatery?.tip ?? ''} maxLength={TIP_MAX} placeholder="The line is shortest before 11." />
         </Field>
         <Field label="Hours, in words" description="As an official source lists them. Shown on its card.">
           <Input name="hours" defaultValue={eatery?.hours ?? ''} placeholder="Mon–Fri 7 a.m.–9 p.m. Closed weekends." />

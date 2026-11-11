@@ -5,6 +5,8 @@ import Link from 'next/link'
 import type { FC } from 'react'
 
 import { EateryCard } from '@/globals/Eateries'
+import { accentOf, accentTile } from '@/globals/GuidePicks'
+import { InsiderTip } from '@/globals/InsiderTip'
 import { OpenBadge } from '@/globals/OpenBadge'
 import { useSiteContent } from '@/globals/SiteContent'
 import { card, iconTile } from '@/globals/ui/styles'
@@ -33,9 +35,12 @@ const ReferenceCard: FC<{ item: CardResolved; preview: boolean }> = ({ item, pre
   const Icon = (item.icon && CARD_ICONS[item.icon]?.Icon) || ICONS[item.kind]
   const external = isExternal(item.href)
   return (
-    <article className={card({ padded: true, className: 'group relative flex flex-col gap-2 transition-colors hover:border-brand/55 has-[a:focus-visible]:border-brand' })}>
+    <article
+      style={item.accent === undefined ? undefined : accentOf(item.accent)}
+      className={card({ padded: true, className: 'group relative flex flex-col gap-2 transition-colors hover:border-(--accent,var(--brand)) has-[a:focus-visible]:border-brand' })}
+    >
       <div className="flex items-start justify-between gap-3">
-        <span className={iconTile} aria-hidden>
+        <span className={item.accent === undefined ? iconTile : accentTile} aria-hidden>
           <Icon size={20} strokeWidth={2} />
         </span>
         <ArrowUpRight size={18} aria-hidden className="mt-1 shrink-0 text-muted transition-[color,transform] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand" />
@@ -56,6 +61,7 @@ const ReferenceCard: FC<{ item: CardResolved; preview: boolean }> = ({ item, pre
         )}
       </h3>
       {item.text ? <p className="m-0 text-[0.92rem] leading-[1.6] text-muted">{item.text}</p> : null}
+      {item.tip ? <InsiderTip tip={item.tip} className="m-0" /> : null}
       {item.schedule ? <OpenBadge schedule={item.schedule} /> : null}
       {item.mapHref && !preview ? (
         <Link href={item.mapHref} className="relative z-10 mt-auto inline-flex items-center gap-1 self-start text-[0.8rem] font-semibold text-brand no-underline hover:underline">

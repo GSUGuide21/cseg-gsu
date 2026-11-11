@@ -9,7 +9,7 @@ import { executiveFromRow, parseService, serviceText, sortExecutives } from '@/l
 import type { ClubEventRow, ExecutiveRow } from '@/lib/supabase/types'
 
 const shown: { executives: ReturnType<typeof executiveFromRow>[] } = { executives: [] }
-jest.mock('../app/lib/dashboard/public', () => ({ getExecutives: jest.fn(async () => shown.executives) }))
+jest.mock('../app/lib/dashboard/public', () => ({ getExecutives: jest.fn(async () => shown.executives), getPublishedPage: jest.fn(async () => null) }))
 
 import ExecutivesPage from '../app/(page)/executives/page'
 

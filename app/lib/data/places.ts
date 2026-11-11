@@ -42,6 +42,8 @@ export type Place = {
   readonly schedule?: Schedule
   /** Room directory by floor, shown in the place panel and matched by search */
   readonly floors?: readonly Floor[]
+  /** A short tip in a student's voice, shown in the place panel */
+  readonly tip?: string
 }
 
 export const PLACE_CATEGORIES: Record<PlaceCategory, { label: string; color: string }> = {

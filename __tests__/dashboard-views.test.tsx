@@ -143,6 +143,10 @@ describe('Dashboard views', () => {
       publish_at: null,
       review_requested: false,
       review_note: null,
+      parent_id: null,
+      nav_placement: 'none',
+      nav_label: null,
+      nav_sort: 0,
       unpublish_at: null,
       title: 'Guide',
       description: 'A first-month guide.',
@@ -219,6 +223,7 @@ describe('Dashboard views', () => {
       description: '',
       aliases: [],
       also_in: [],
+      tip: null,
       published: true,
       created_at: stamp,
       updated_at: stamp,
@@ -232,7 +237,7 @@ describe('Dashboard views', () => {
   })
 
   it('Map: tells campus places from club pins, and filters by kind', () => {
-    const row = { category: 'student-life', lat: 33.7531, lng: -84.3853, address: null, description: '', aliases: [], also_in: [], published: true, created_at: stamp, updated_at: stamp }
+    const row = { category: 'student-life', lat: 33.7531, lng: -84.3853, address: null, description: '', aliases: [], also_in: [], tip: null, published: true, created_at: stamp, updated_at: stamp }
     const campus: MapPlaceRow = { ...row, id: 'c1', slug: 'student-center-west', name: 'Student Center West' }
     const club: MapPlaceRow = { ...row, id: 'p1', slug: null, name: 'Meeting room' }
     wrap(<MapView places={[campus, club]} />)
@@ -247,7 +252,7 @@ describe('Dashboard views', () => {
   it('Eateries: lists them in the page’s order and edits hours that save as JSON', async () => {
     const row = (over: Partial<EateryRow>): EateryRow => ({
       id: 'e1', slug: 'taco-spot', name: 'Taco Spot', area: 'park-place', dining_hall: false, address: '1 Park Place', description: '', hours: null, schedule: null,
-      status: null, note: null, lat: 33.754, lng: -84.386, locations: [], place_id: null, url: null, aliases: [], sort: 10, published: true, checked_on: '2000-01-01', created_at: stamp, updated_at: stamp, ...over,
+      status: null, note: null, lat: 33.754, lng: -84.386, locations: [], place_id: null, url: null, aliases: [], sort: 10, published: true, checked_on: '2000-01-01', tip: null, created_at: stamp, updated_at: stamp, ...over,
     })
     const areas: EateryAreaRow[] = [
       { slug: 'campus', title: 'On campus', description: null, sort: 10, created_at: stamp, updated_at: stamp },
@@ -314,7 +319,7 @@ describe('Dashboard views', () => {
       { slug: 'academics', title: 'Academics', description: null, icon: 'book', sort: 10, created_at: stamp, updated_at: stamp },
       { slug: 'money', title: 'Money & aid', description: null, icon: 'money', sort: 20, created_at: stamp, updated_at: stamp },
     ]
-    const resource = (over: Partial<ResourceRow>): ResourceRow => ({ id: 'x1', slug: 'paws', group_slug: 'academics', label: 'PAWS', href: 'https://paws.gsu.edu', description: '', place_id: null, sort: 10, published: true, created_at: stamp, updated_at: stamp, ...over })
+    const resource = (over: Partial<ResourceRow>): ResourceRow => ({ id: 'x1', slug: 'paws', group_slug: 'academics', label: 'PAWS', href: 'https://paws.gsu.edu', description: '', place_id: null, tip: null, sort: 10, published: true, created_at: stamp, updated_at: stamp, ...over })
     wrap(<ResourcesView groups={groups} resources={[resource({ id: 'x2', slug: 'aid', group_slug: 'money', label: 'Financial Aid' }), resource({})]} />)
     const rows = screen.getByRole('table', { name: 'Resources' }).querySelectorAll('tbody tr')
     expect([...rows].map((r) => r.textContent?.match(/PAWS|Financial Aid/)?.[0])).toEqual(['PAWS', 'Financial Aid'])

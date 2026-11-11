@@ -12,14 +12,18 @@ export type PageHeaderProps = {
   lead?: ReactNode
   /** Action buttons under the lead */
   children?: ReactNode
+  /** 2 where the page already has its heading (under the campus map, say); the page's own otherwise */
+  headingLevel?: 1 | 2
 }
 
-export const PageHeader: FC<PageHeaderProps> = ({ eyebrow: label, title, lead, children }) => (
+export const PageHeader: FC<PageHeaderProps> = ({ eyebrow: label, title, lead, children, headingLevel = 1 }) => {
+  const Heading = headingLevel === 2 ? 'h2' : 'h1'
+  return (
   <header className="flex max-w-[46rem] animate-fade-in flex-col gap-4 motion-reduce:animate-none">
     <p className={eyebrow}>{label}</p>
-    <h1 className="text-[clamp(2rem,5vw,3.25rem)] leading-[1.1] font-extrabold tracking-tight text-balance text-ink">
+    <Heading className={cn('leading-[1.1] font-extrabold tracking-tight text-balance text-ink', headingLevel === 2 ? 'text-[clamp(1.6rem,4vw,2.25rem)]' : 'text-[clamp(2rem,5vw,3.25rem)]')}>
       {title}
-    </h1>
+    </Heading>
     {lead ? (
       <p className="text-[clamp(1rem,1.6vw,1.15rem)] leading-[1.7] text-pretty text-muted">{lead}</p>
     ) : null}
@@ -27,7 +31,8 @@ export const PageHeader: FC<PageHeaderProps> = ({ eyebrow: label, title, lead, c
       <div className="mt-2 flex flex-wrap items-center gap-3 max-[559px]:[&>*]:flex-auto">{children}</div>
     ) : null}
   </header>
-)
+  )
+}
 
 export type PageBlockProps = {
   title: string

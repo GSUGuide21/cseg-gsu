@@ -7,7 +7,7 @@ import type { Executive } from '@/(page)/executives/components/types'
 import ExecutivesPage from '@/(page)/executives/page'
 
 // Nobody in the dashboard yet, and none built in
-jest.mock('../app/lib/dashboard/public', () => ({ getExecutives: jest.fn(async () => []) }))
+jest.mock('../app/lib/dashboard/public', () => ({ getExecutives: jest.fn(async () => []), getPublishedPage: jest.fn(async () => null) }))
 
 const person = (firstName: string, extra: Partial<Executive> = {}): Executive => ({
   firstName,

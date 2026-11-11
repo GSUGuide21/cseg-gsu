@@ -88,6 +88,19 @@ export const FOOTER_NAV_SECTIONS: readonly { title: string; links: readonly NavL
   },
 ]
 
+/**
+ * The menu with the pages officers added from the dashboard: one page is its own item, and
+ * more than one share a More menu (which opens the first of them when clicked itself).
+ */
+export const navWithPages = (links: readonly NavItem[], pages: readonly NavMenuLink[]): readonly NavItem[] => {
+  if (!pages.length) return links
+  if (pages.length === 1) return [...links, { href: pages[0].href, label: pages[0].label }]
+  return [...links, { href: pages[0].href, label: 'More', menu: { description: 'More from CSEG, written by the officers.', links: pages } }]
+}
+
+/** The footer's sections, with a More section for the pages officers listed there */
+export const footerWithPages = (pages: readonly NavLink[]) => (pages.length ? [...FOOTER_NAV_SECTIONS, { title: 'More', links: pages }] : FOOTER_NAV_SECTIONS)
+
 export const isNavActive = (pathname: string, href: string): boolean =>
   href === '/'
     ? pathname === '/'

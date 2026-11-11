@@ -1,9 +1,10 @@
 'use client'
 
-import { ArrowUpRight, Clock, Info, MapPin, Navigation, TriangleAlert } from 'lucide-react'
+import { ArrowUpRight, Clock, Info, MapPin, Navigation, TriangleAlert, Utensils } from 'lucide-react'
 import Link from 'next/link'
 import type { FC } from 'react'
 
+import { InsiderTip } from '@/globals/InsiderTip'
 import { OpenBadge } from '@/globals/OpenBadge'
 import { card, grid3 } from '@/globals/ui/styles'
 import { directionsHref, eateryMapId, type Eatery } from '@/lib/eateries'
@@ -18,9 +19,16 @@ const smallLink = 'inline-flex items-center gap-1 text-[0.8rem] font-semibold te
 export const EateryCard: FC<{ eatery: Eatery }> = ({ eatery: e }) => {
   const mapId = eateryMapId(e)
   return (
-    <article id={e.id} className={card({ className: 'flex scroll-mt-24 flex-col gap-2.5 p-5' })}>
+    <article id={e.id} className={card({ className: 'flex scroll-mt-24 flex-col gap-2.5 p-5 target:border-brand target:ring-2 target:ring-brand/25' })}>
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h3 className="text-[1.05rem] leading-snug font-bold text-ink">{e.name}</h3>
+        <h3 className="flex items-center gap-2 text-[1.05rem] leading-snug font-bold text-ink">
+          {e.diningHall ? (
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-brand-tint text-brand" title="Dining hall" aria-hidden>
+              <Utensils size={15} />
+            </span>
+          ) : null}
+          {e.name}
+        </h3>
         {e.status ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,#c2410c_14%,var(--bg))] px-2.5 py-0.5 text-[0.72rem] font-bold text-[#9a3412] dark:text-[#fdba74]">
             <TriangleAlert size={12} aria-hidden />
@@ -46,6 +54,7 @@ export const EateryCard: FC<{ eatery: Eatery }> = ({ eatery: e }) => {
           {e.note}
         </p>
       ) : null}
+      {e.tip ? <InsiderTip tip={e.tip} /> : null}
       <div className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-1">
         {mapId ? (
           <Link href={`/map?place=${mapId}`} className={smallLink}>

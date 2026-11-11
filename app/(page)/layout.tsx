@@ -5,7 +5,7 @@ import { Footer } from '@/globals/Footer'
 import { Header } from '@/globals/Header'
 import { PreviewBanner } from '@/globals/PreviewBanner'
 import { SiteBanner } from '@/globals/SiteBanner'
-import { getClubDetails } from '@/lib/dashboard/public'
+import { getClubDetails, getNavPages } from '@/lib/dashboard/public'
 
 /**
  * What search and link previews fall back to, as officers set them in Settings: the site's
@@ -21,15 +21,17 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
+  // The pages officers put in the menu, with the site's own
+  const [details, nav] = await Promise.all([getClubDetails(), getNavPages()])
   return (
-    <ClubDetailsProvider details={await getClubDetails()}>
+    <ClubDetailsProvider details={details}>
       <PreviewBanner />
-      <Header />
+      <Header pages={nav.header} />
       <main className="min-h-screen pt-header">
         <SiteBanner />
         {children}
       </main>
-      <Footer />
+      <Footer pages={nav.footer} />
     </ClubDetailsProvider>
   )
 }

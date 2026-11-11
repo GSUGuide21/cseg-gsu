@@ -27,6 +27,8 @@ export type Resource = {
   readonly description: string
   /** The map place it's in, for "Show on map" */
   readonly placeId?: string
+  /** A short tip in a student's voice */
+  readonly tip?: string
 }
 
 /** The group chats' group: on /resources with a word of caution, and the header's #chats link */
@@ -70,6 +72,7 @@ export const resourceFromRow = (row: ResourceRow): Resource => ({
   href: row.href,
   description: row.description,
   placeId: row.place_id ?? undefined,
+  tip: row.tip ?? undefined,
 })
 
 export const resourceGroupFromRow = (row: ResourceGroupRow): ResourceGroup => ({ slug: row.slug, title: row.title, description: row.description ?? undefined, icon: row.icon })
@@ -84,4 +87,5 @@ export const resourceToRow = (r: Resource, sort: number): Database['public']['Ta
   place_id: r.placeId ?? null,
   sort,
   published: true,
+  ...(r.tip ? { tip: r.tip } : {}),
 })

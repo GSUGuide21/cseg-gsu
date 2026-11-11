@@ -12,7 +12,7 @@ export interface EmptyStateProps {
   size?: 'sm' | 'md'
   /** A dashed outline around it, for an empty area of a page */
   bordered?: boolean
-  /** The title's heading level; leave out inside a table, where it's plain text */
-  headingLevel?: 2 | 3 | 4
+  /** The title's heading level (1 when it's all the page shows); leave out inside a table, where it's plain text */
+  headingLevel?: 1 | 2 | 3 | 4
   className?: string
 }

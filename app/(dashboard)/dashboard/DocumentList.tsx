@@ -32,7 +32,7 @@ export interface DocumentSummary {
 
 const COPY = {
   post: { title: 'Posts', description: 'News and announcements, listed at /posts on the site.', base: '/posts', list: '/dashboard/posts', create: 'Write a post', icon: <Newspaper /> },
-  page: { title: 'Pages', description: 'Standalone pages on the site, at /pages/…: a constitution, an FAQ, a sign-up guide.', base: '/pages', list: '/dashboard/pages', create: 'Create a page', icon: <FileText /> },
+  page: { title: 'Pages', description: 'Standalone pages on the site, each at its own address (/guide): a constitution, an FAQ, a sign-up guide. A page can sit under another, and be listed in the menu.', base: '', list: '/dashboard/pages', create: 'Create a page', icon: <FileText /> },
 } as const
 
 type DocumentState = 'draft' | 'review' | 'live' | 'scheduled' | 'ended'

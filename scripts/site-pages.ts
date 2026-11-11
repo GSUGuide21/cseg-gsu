@@ -217,7 +217,7 @@ const resources: SitePageSeed = {
   slug: 'resources',
   title: 'Student resources',
   subtitle:
-    'Georgia State offers more support than most students ever use. These are the links we point Panthers to most, from registering for classes to finding free food.',
+    'Georgia State has more help on offer than most students ever find out about, and you’re already paying for it. These are the links we send Panthers to most, from registering for classes to free groceries.',
   description: 'Links to Georgia State services for academics, money, health, housing, and getting involved, plus GSU colleges and student group chats.',
   sections: [
     // Each group live from the dashboard's resources, keeping its #link (the header's Resources menu links to them)
@@ -237,7 +237,7 @@ const eaterySection = (title: string, subtitle: string, area: EatArea, kind: Eat
 const eat: SitePageSeed = {
   slug: 'eat',
   title: 'Places to eat',
-  subtitle: 'Campus dining halls, on-campus eateries, and nearby restaurants, cafés, quick bites, and late-night spots around Georgia State’s downtown campus.',
+  subtitle: 'Twenty minutes between classes, or a whole evening to kill: here’s where Panthers actually eat. Dining halls, campus counters, and the restaurants, cafés, and late-night spots a short walk from class.',
   description: 'Campus dining halls, on-campus eateries, and nearby restaurants, cafés, and late-night spots around Georgia State’s downtown campus.',
   sections: [
     section(

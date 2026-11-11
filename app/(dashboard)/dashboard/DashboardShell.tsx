@@ -1,6 +1,6 @@
 'use client'
 
-import { BadgeDollarSign, BookOpen, CalendarDays, CircleHelp, CornerUpRight, FileText, Handshake, Home, Images, Inbox, LayoutDashboard, LayoutTemplate, LogOut, MapPin, Newspaper, NotebookPen, PanelTop, PenSquare, Route, Settings, UserPlus, UserRoundCog, Users, Utensils, Wallet } from 'lucide-react'
+import { BadgeDollarSign, BookOpen, CalendarDays, CircleHelp, CornerUpRight, FileText, Handshake, Home, Images, Inbox, LayoutDashboard, LayoutTemplate, LogOut, MapPin, Newspaper, NotebookPen, PanelTop, PenSquare, Route, Settings, Star, UserPlus, UserRoundCog, Users, Utensils, Wallet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { FC, ReactNode } from 'react'
 
@@ -84,6 +84,7 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
       { label: 'Shortcuts', href: '/dashboard/connections', icon: <Route /> },
       { label: 'Eateries', href: '/dashboard/eateries', icon: <Utensils /> },
       { label: 'Resources', href: '/dashboard/resources', icon: <BookOpen /> },
+      { label: 'Picks', href: '/dashboard/picks', icon: <Star /> },
     ],
   },
   {

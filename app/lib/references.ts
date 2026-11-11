@@ -97,6 +97,10 @@ export type CardResolved = {
   mapHref?: string
   /** One of the card icons, in place of the kind's own (a resource's group's) */
   icon?: string
+  /** A short tip in a student's voice, under the text */
+  tip?: string
+  /** Which of the guides' colors its icon takes: a resource's group's place in the page's order */
+  accent?: number
 }
 
 /** A referenced thing, ready to draw: eateries' own cards, or cards of the general kind */
@@ -108,7 +112,7 @@ export type Resolved =
   | { kind: 'resources'; title: string; cards: readonly CardResolved[] }
   | CardResolved
 
-const placeCard = (p: Place): CardResolved => ({ kind: 'place', label: REFERENCE_KINDS.place, title: p.name, text: p.address ? `${p.address}. ${p.description}` : p.description, href: mapHref(p), schedule: p.schedule })
+const placeCard = (p: Place): CardResolved => ({ kind: 'place', label: REFERENCE_KINDS.place, title: p.name, text: p.address ? `${p.address}. ${p.description}` : p.description, href: mapHref(p), schedule: p.schedule, tip: p.tip })
 
 const resourceCard = (r: Resource, content: SiteContent): CardResolved => {
   const group = content.resourceGroups.find((g) => g.slug === r.group)
@@ -121,6 +125,8 @@ const resourceCard = (r: Resource, content: SiteContent): CardResolved => {
     href: r.href,
     mapHref: place ? mapHref(place) : undefined,
     icon: group?.icon || undefined,
+    tip: r.tip,
+    accent: group ? content.resourceGroups.indexOf(group) : undefined,
   }
 }
 

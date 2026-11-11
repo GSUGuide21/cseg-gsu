@@ -29,6 +29,13 @@ export const PIN_ORGANIZATION_ID = 351802
 const PIN_EVENT_SEARCH = `https://pin.gsu.edu/api/discovery/event/search?organizationIds%5B0%5D=${PIN_ORGANIZATION_ID}&orderByField=endsOn&orderByDirection=ascending&take=50`
 
 /**
+ * The search, from the start of today on (to the hour, so the cached answer is reused).
+ * Without a floor PIN answers with the club's oldest events first, and once there are more
+ * than fifty of those the upcoming ones fall off the end.
+ */
+const pinSearchFrom = (now: number) => `${PIN_EVENT_SEARCH}&endsAfter=${encodeURIComponent(new Date(Math.floor(now / 3_600_000) * 3_600_000).toISOString())}`
+
+/**
  * Past events, from the @cseg_gsu Instagram posts and the club's flyers. PIN's public
  * search only returns events whose visibility is Public, so older CSEG events aren't there.
  * Newest first.
@@ -151,7 +158,7 @@ const stripHtml = (html: string) =>
  */
 export async function getUpcomingEvents(now = Date.now()): Promise<ClubEvent[]> {
   try {
-    const res = await fetch(PIN_EVENT_SEARCH, { next: { revalidate: 3600 } })
+    const res = await fetch(pinSearchFrom(now), { next: { revalidate: 3600 } })
     if (!res.ok) return []
     const data: { value?: PinEvent[] } = await res.json()
     return (data.value ?? [])

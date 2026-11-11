@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import type { FC } from 'react'
 
 import { useClubDetails } from '@/globals/ClubDetails'
-import { FOOTER_NAV_SECTIONS, isNavActive } from '@/globals/config/nav'
+import { footerWithPages, isNavActive, type NavLink } from '@/globals/config/nav'
 import { SITE_NAME } from '@/globals/config/site'
 import { GSU_URL } from '@/globals/config/social'
 import { Wordmark } from '@/globals/Logo'
@@ -14,7 +14,8 @@ import { SocialIcons } from '@/globals/SocialIcons'
 import { button, card, eyebrow } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 
-export const Footer: FC = () => {
+/** `pages` are the ones officers listed in the footer from the dashboard */
+export const Footer: FC<{ pages?: readonly NavLink[] }> = ({ pages = [] }) => {
   const pathname = usePathname()
   const { tagline, contactEmail } = useClubDetails()
   const year = new Date().getFullYear()
@@ -30,7 +31,7 @@ export const Footer: FC = () => {
           </div>
 
           <nav className="grid grid-cols-2 gap-x-6 gap-y-8" aria-label="Footer navigation">
-            {FOOTER_NAV_SECTIONS.map((section) => (
+            {footerWithPages(pages).map((section) => (
               <div key={section.title}>
                 <h3 className={cn(eyebrow, 'mb-4 text-ink-faint')}>{section.title}</h3>
                 <ul className="flex flex-col gap-2.5">

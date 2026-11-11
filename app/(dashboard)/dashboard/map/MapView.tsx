@@ -7,7 +7,7 @@ import { useState, type FC } from 'react'
 import { ActionMenu, Badge, Button, Dialog, EmptyState, FilterBar, Table, useNotify, type FilterValues } from '@/components'
 import { Field, Input, NumberInput, Select, Switch, TextArea } from '@/components/Form'
 import { deletePlace, movePlace, savePlace } from '@/lib/dashboard/actions'
-import { coordsFrom } from '@/lib/dashboard/validate'
+import { coordsFrom, TIP_MAX } from '@/lib/dashboard/validate'
 import { PLACE_CATEGORIES } from '@/lib/data/places'
 import type { MapPlaceRow } from '@/lib/supabase/types'
 
@@ -108,6 +108,9 @@ const PlaceDialog: FC<{ place: MapPlaceRow | null; start?: LatLng | null; others
         </Field>
         <Field label="Description">
           <TextArea name="description" rows={3} defaultValue={place?.description ?? ''} />
+        </Field>
+        <Field label="Insider tip" error={errors.tip} description="Optional. A line of advice in a student’s voice, set apart on its card.">
+          <Input name="tip" defaultValue={place?.tip ?? ''} maxLength={TIP_MAX} placeholder="The second floor is quieter than the first." />
         </Field>
         <Switch name="published" defaultChecked={place?.published ?? true} description="Hidden pins stay here for later.">
           Show on the campus map

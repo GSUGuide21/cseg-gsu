@@ -65,6 +65,8 @@ export type Eatery = {
   /** Shown in the "Dining halls" group */
   readonly diningHall?: boolean
   readonly aliases?: readonly string[]
+  /** A short tip in a student's voice ("the line is shortest before 11") */
+  readonly tip?: string
 }
 
 /** Which of an area's eateries a list shows */
@@ -125,6 +127,7 @@ export const eateryFromRow = (row: EateryRow): Eatery => ({
   url: orUndefined(row.url),
   diningHall: row.dining_hall,
   aliases: row.aliases,
+  tip: orUndefined(row.tip ?? null),
 })
 
 export const areaFromRow = (row: EateryAreaRow): EateryArea => ({ slug: row.slug, title: row.title, description: orUndefined(row.description) })
@@ -180,4 +183,5 @@ export const eateryToRow = (e: Eatery, sort: number): EateryInsert => ({
   aliases: [...(e.aliases ?? [])],
   sort,
   published: true,
+  ...(e.tip ? { tip: e.tip } : {}),
 })

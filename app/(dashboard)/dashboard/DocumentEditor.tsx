@@ -19,7 +19,8 @@ import { upgradeEateriesBlocks } from '@/lib/richtext/blocks'
 import { safeSrc } from '@/lib/safeUrl'
 import { isSitePage, pageHref, SITE_PAGES } from '@/lib/sitePages'
 import { cn } from '@/lib/cn'
-import { PAGE_EYEBROW_MAX as EYEBROW_MAX, PAGE_SUBTITLE_MAX as SUBTITLE_MAX, POST_CATEGORIES, type PageLayout, type PageRow, type PageSection, type PostRow, type PublishStatus } from '@/lib/supabase/types'
+import { PAGE_EYEBROW_MAX as EYEBROW_MAX, PAGE_SUBTITLE_MAX as SUBTITLE_MAX, POST_CATEGORIES, type PageLayout, type PageRow, type NavPlacement, type PageSection, type PostRow, type PublishStatus } from '@/lib/supabase/types'
+import { NAV_LABEL_MAX, NAV_PLACEMENTS } from '@/lib/dashboard/validate'
 
 import { RevisionHistory } from './RevisionHistory'
 import { joinSections, newSection, SectionsEditor } from './SectionsEditor'
@@ -28,8 +29,11 @@ import { useAction } from './ui'
 type Doc = Pick<PostRow, 'id' | 'title' | 'slug' | 'body' | 'status'> &
   Partial<
     Pick<PostRow, 'excerpt' | 'cover_image_url' | 'published_at' | 'updated_at' | 'author_email' | 'category' | 'featured' | 'review_requested' | 'review_note'> &
-      Pick<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'updated_by' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at'>
+      Pick<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'updated_by' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort'>
   >
+
+/** Another page, as the editor needs it to offer "sits under" */
+export type OtherPage = Pick<PageRow, 'id' | 'slug' | 'title'> & Partial<Pick<PageRow, 'parent_id'>>
 
 const KINDS = {
   post: {
@@ -101,7 +105,9 @@ export const DocumentEditor: FC<{
   doc: Doc | null
   /** A look without signing in (the dev preview): nothing is sent to the server */
   demo?: boolean
-}> = ({ kind, doc, demo = false }) => {
+  /** The site's other pages, for the ones this page can sit under */
+  pages?: readonly OtherPage[]
+}> = ({ kind, doc, demo = false, pages = [] }) => {
   const k = KINDS[kind]
   const router = useRouter()
   const { confirm, toast } = useNotify()
@@ -125,9 +131,18 @@ export const DocumentEditor: FC<{
   // What the one-piece editor starts from; kept across a switch to sections and back
   const [bodyStart, setBodyStart] = useState(() => upgradeEateriesBlocks(doc?.body ?? ''))
   const inSections = kind === 'page' && layout === 'sections'
-  /** Where it shows on the site: /posts/…, /pages/…, or a site page's own path (/about) */
-  const pathOf = (s: string) => (kind === 'page' ? pageHref(s) : `${k.base}/${s}`)
+  // A page's place on the site: the page it sits under, and where the menu lists it
+  const [parentId, setParentId] = useState(doc?.parent_id ?? '')
+  const [navPlacement, setNavPlacement] = useState<NavPlacement>(doc?.nav_placement ?? 'none')
+  const [navLabel, setNavLabel] = useState(doc?.nav_label ?? '')
+  const [navSort, setNavSort] = useState(String(doc?.nav_sort ?? 0))
   const replacesSitePage = kind === 'page' && isSitePage(slug)
+  // Pages go one level deep: a page under another can't be a parent, nor can a parent go under another
+  const hasSubpages = !!doc && pages.some((p) => p.parent_id === doc.id)
+  const parentChoices = pages.filter((p) => p.id !== doc?.id && !p.parent_id)
+  const parentSlug = replacesSitePage ? null : (pages.find((p) => p.id === parentId)?.slug ?? null)
+  /** Where it shows on the site: /posts/…, /its-address (under its parent's, if it has one), or a site page's own path (/about) */
+  const pathOf = (s: string) => (kind === 'page' ? pageHref(s, parentSlug) : `${k.base}/${s}`)
   // A post's cover image, or a page's link-preview image: the same picker either way
   const [cover, setCover] = useState((kind === 'post' ? doc?.cover_image_url : doc?.share_image_url) ?? '')
   // A page's label above its title, what shows under it, and when it's live
@@ -174,6 +189,10 @@ export const DocumentEditor: FC<{
     eyebrow,
     showToc,
     showUpdated,
+    parentId,
+    navPlacement,
+    navLabel,
+    navSort,
     publishAt,
     unpublishAt,
     category,
@@ -227,6 +246,10 @@ export const DocumentEditor: FC<{
     setEyebrow(s.eyebrow)
     setShowToc(s.showToc)
     setShowUpdated(s.showUpdated)
+    setParentId(s.parentId ?? '')
+    setNavPlacement(s.navPlacement ?? 'none')
+    setNavLabel(s.navLabel ?? '')
+    setNavSort(s.navSort ?? '0')
     setPublishAt(s.publishAt)
     setUnpublishAt(s.unpublishAt)
     setCategory(s.category ?? null)
@@ -265,6 +288,10 @@ export const DocumentEditor: FC<{
       data.set('eyebrow', eyebrow)
       if (showToc) data.set('show_toc', 'on')
       if (showUpdated) data.set('show_updated', 'on')
+      data.set('parent_id', replacesSitePage || hasSubpages ? '' : parentId)
+      data.set('nav_placement', navPlacement)
+      data.set('nav_label', navLabel)
+      data.set('nav_sort', navSort)
       data.set('subtitle', subtitle)
       data.set('layout', layout)
       data.set('sections', JSON.stringify(sections))
@@ -564,6 +591,45 @@ export const DocumentEditor: FC<{
               >
                 “On this page” list
               </Switch>
+            </Card>
+          ) : null}
+
+          {kind === 'page' ? (
+            <Card title="Place on the site">
+              <Field
+                label="Sits under"
+                error={errors.parent_id}
+                description={
+                  replacesSitePage
+                    ? 'This is one of the site’s own pages, so it stays at its own address.'
+                    : hasSubpages
+                      ? 'Other pages sit under this one, so it stays at the top.'
+                      : parentSlug
+                        ? `Its address becomes ${pathOf(slug || '…')}, with a link back to that page above its title.`
+                        : 'Pick a page to put this one under it, like /guides/parking.'
+                }
+              >
+                <Select
+                  size="sm"
+                  value={replacesSitePage || hasSubpages ? '' : parentId}
+                  onValueChange={(v) => setParentId(v ?? '')}
+                  disabled={replacesSitePage || hasSubpages}
+                  options={[{ value: '', label: 'Nothing (a top-level page)' }, ...parentChoices.map((p) => ({ value: p.id, label: p.title }))]}
+                />
+              </Field>
+              <Field label="In the menu" error={errors.nav_placement} description="Shown once the page is published. Top-menu pages share a More menu.">
+                <Select size="sm" value={navPlacement} onValueChange={(v) => setNavPlacement((v ?? 'none') as NavPlacement)} options={[...NAV_PLACEMENTS]} />
+              </Field>
+              {navPlacement !== 'none' ? (
+                <>
+                  <Field label="Menu label" error={errors.nav_label} description="Left empty, the page’s title.">
+                    <Input size="sm" value={navLabel} maxLength={NAV_LABEL_MAX} onChange={(e) => setNavLabel(e.target.value)} placeholder={title || 'Page title'} />
+                  </Field>
+                  <Field label="Order" description="Lower numbers come first.">
+                    <Input size="sm" type="number" inputMode="numeric" value={navSort} onChange={(e) => setNavSort(e.target.value)} />
+                  </Field>
+                </>
+              ) : null}
             </Card>
           ) : null}
 

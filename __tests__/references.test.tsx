@@ -52,9 +52,9 @@ describe('References blocks', () => {
     expect(within(place.closest('article')!).getByText('Open 24/7')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: `${paws.label} (opens in a new tab)` })).toHaveAttribute('href', paws.href)
     expect(screen.getByRole('link', { name: 'Welcome Week recap' })).toHaveAttribute('href', '/posts/welcome-week')
-    // A site page links to its own path; the others to /pages/…
+    // A site page links to its own path; the others to their own address
     expect(screen.getByRole('link', { name: 'About CSEG' })).toHaveAttribute('href', '/about')
-    expect(screen.getByRole('link', { name: 'Study spots' })).toHaveAttribute('href', '/pages/study-spots')
+    expect(screen.getByRole('link', { name: 'Study spots' })).toHaveAttribute('href', '/study-spots')
     expect(screen.getByText('Quiet places on campus.')).toBeInTheDocument()
   })
 

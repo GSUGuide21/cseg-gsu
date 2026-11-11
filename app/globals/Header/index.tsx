@@ -3,9 +3,9 @@
 import { Menu, Search, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isNavActive, NAV_LINKS } from '@/globals/config/nav'
+import { isNavActive, NAV_LINKS, navWithPages, type NavLink } from '@/globals/config/nav'
 import { Wordmark } from '@/globals/Logo'
 import { iconButton } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
@@ -16,8 +16,11 @@ import { HeaderThemeToggle } from './ThemeToggle'
 /** Join is promoted to a button on desktop, so the text nav omits it. */
 const DESKTOP_LINKS = NAV_LINKS.filter((l) => l.href !== '/join')
 
-export const Header = () => {
+/** `pages` are the ones officers put in the menu from the dashboard: under More on desktop, each its own line on mobile */
+export const Header = ({ pages = [] }: { pages?: readonly (NavLink & { description?: string })[] }) => {
   const pathname = usePathname()
+  const desktopLinks = useMemo(() => navWithPages(DESKTOP_LINKS, pages), [pages])
+  const mobileLinks = useMemo(() => [...NAV_LINKS, ...pages.map(({ href, label }) => ({ href, label }))], [pages])
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [subnavOpen, setSubnavOpen] = useState(false)
@@ -82,7 +85,7 @@ export const Header = () => {
         >
           <Wordmark priority className="shrink-0" textClassName="max-[22rem]:hidden" />
           <div className="ml-auto hidden self-stretch lg:flex">
-            <DesktopNav links={DESKTOP_LINKS} isActive={activeFor} onMenuChange={setSubnavOpen} />
+            <DesktopNav links={desktopLinks} isActive={activeFor} onMenuChange={setSubnavOpen} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
             <Link href="/search" aria-label="Search the site" title="Search" className={iconButton({ size: 'md' })}>
@@ -109,7 +112,7 @@ export const Header = () => {
           </div>
         </nav>
       </header>
-      <MobileNav open={open} links={NAV_LINKS} isActive={activeFor} onNavigate={closeMenu} />
+      <MobileNav open={open} links={mobileLinks} isActive={activeFor} onNavigate={closeMenu} />
     </>
   )
 }

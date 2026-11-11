@@ -884,7 +884,7 @@ export const CampusMap: FC<CampusMapProps> = ({
               Find your way around
             </h1>
             <p className="text-[0.84rem] leading-relaxed text-muted max-lg:hidden">
-              Buildings, study spots, food, parking, and MARTA on the Atlanta campus.
+              Every building, study spot, bite to eat, parking deck, and MARTA stop on the Atlanta campus, and the quickest walk between them.
             </p>
           </div>
           <div className="flex rounded-xl border border-line bg-fill p-1" role="tablist" aria-label="Map mode">

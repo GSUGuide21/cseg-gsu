@@ -24,7 +24,7 @@ import type { Connection } from '@/lib/wayfinding'
 import { pageHref, SITE_PAGES } from '@/lib/sitePages'
 import { createClient, createPublicClient } from '@/lib/supabase/server'
 import { sortSponsors, sponsorActive } from './terms'
-import type { AffiliateRow, ClubEventRow, ClubSettingsRow, FaqRow, MapConnectionRow, RedirectRow, SponsorRow, EateryAreaRow, ExecutiveRow, EateryClosureRow, EateryRow, HomepageRow, MapPlaceRow, PageMetaRow, PageRedirectRow, PageRow, PostRow, ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
+import type { GuideKind, GuidePickRow, AffiliateRow, ClubEventRow, ClubSettingsRow, FaqRow, MapConnectionRow, RedirectRow, SponsorRow, EateryAreaRow, ExecutiveRow, EateryClosureRow, EateryRow, HomepageRow, MapPlaceRow, PageMetaRow, PageRedirectRow, PageRow, PostRow, ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
 
 /**
  * What the public site reads from the dashboard: published posts, pages, and map pins.
@@ -65,8 +65,87 @@ export async function getRelatedPosts(post: Pick<PostRow, 'slug' | 'category'>) 
 export async function getPublishedPageList() {
   const supabase = createPublicClient()
   if (!supabase) return []
-  return quietly([], () => supabase.from('pages').select('slug, updated_at').eq('status', 'published'))
+  const rows = await quietly<(Pick<PageRow, 'id' | 'slug' | 'updated_at'> & Partial<Pick<PageRow, 'parent_id'>>)[]>([], () => supabase.from('pages').select('*').eq('status', 'published'))
+  const slugOf = new Map(rows.map((r) => [r.id, r.slug]))
+  return rows.map((r) => ({ slug: r.slug, updated_at: r.updated_at, href: pageHref(r.slug, r.parent_id ? slugOf.get(r.parent_id) : null) }))
 }
+
+/** A page as the site's menu and breadcrumbs name it */
+export type PageLink = { href: string; label: string; description?: string }
+
+/** A page's menu details; older rows (before the columns existed) read as not in the menu */
+type NavRow = Pick<PageRow, 'id' | 'slug' | 'title' | 'description' | 'subtitle'> & Partial<Pick<PageRow, 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort'>>
+
+const linkOf = (row: NavRow, parentSlug?: string | null): PageLink => ({
+  href: pageHref(row.slug, parentSlug),
+  label: row.nav_label?.trim() || row.title,
+  description: row.subtitle ?? row.description ?? undefined,
+})
+
+const byMenuOrder = (a: NavRow, b: NavRow) => (a.nav_sort ?? 0) - (b.nav_sort ?? 0) || a.title.localeCompare(b.title)
+
+/** Every published page, once per request: the menu, breadcrumbs, and addresses all read it */
+const getPageRows = cache(async (): Promise<NavRow[]> => {
+  const supabase = createPublicClient()
+  if (!supabase) return []
+  // Named columns, not the pages' writing; before their migration runs this reads as no pages
+  return quietly<NavRow[]>([], () => supabase.from('pages').select('id, slug, title, description, subtitle, parent_id, nav_placement, nav_label, nav_sort').eq('status', 'published'))
+})
+
+/** The pages officers put in the site's menu: the header's More menu, and the footer */
+export const getNavPages = cache(async (): Promise<{ header: PageLink[]; footer: PageLink[] }> => {
+  const rows = await getPageRows()
+  const slugOf = new Map(rows.map((r) => [r.id, r.slug]))
+  const listed = (where: 'header' | 'footer') =>
+    rows
+      .filter((r) => r.nav_placement === where || r.nav_placement === 'both')
+      .sort(byMenuOrder)
+      .map((r) => linkOf(r, r.parent_id ? slugOf.get(r.parent_id) : null))
+  return { header: listed('header'), footer: listed('footer') }
+})
+
+/** The page a page sits under, and the pages that sit under it, for its breadcrumb and "In this section" */
+export async function getPageFamily(page: Pick<PageRow, 'id'> & Partial<Pick<PageRow, 'parent_id'>>): Promise<{ parent: PageLink | null; subpages: PageLink[] }> {
+  const rows = await getPageRows()
+  const self = rows.find((r) => r.id === page.id)
+  const parent = page.parent_id ? rows.find((r) => r.id === page.parent_id) : undefined
+  return {
+    parent: parent ? { ...linkOf(parent), label: parent.title } : null,
+    subpages: self
+      ? rows
+          .filter((r) => r.parent_id === page.id)
+          .sort(byMenuOrder)
+          .map((r) => ({ ...linkOf(r, self.slug), label: r.title }))
+      : [],
+  }
+}
+
+/**
+ * The page at an address made of one or two parts (/guides, /guides/parking), and the
+ * address it should be read at: a page under another answers only at /parent/page, so its
+ * short address (and a wrong parent) forward there.
+ */
+export async function getPageAt(path: readonly string[]): Promise<{ page: PageRow; href: string } | null> {
+  if (path.length < 1 || path.length > 2) return null
+  const page = await getPublishedPage(path[path.length - 1])
+  if (!page) return null
+  let parentSlug: string | null = null
+  if (page.parent_id) {
+    // The parent's own draft counts while previewing, as the page's does
+    const preview = await previewClient()
+    const supabase = preview ?? createPublicClient()
+    const parent = supabase ? await quietly<Pick<PageRow, 'slug'> | null>(null, () => supabase.from('pages').select('slug').eq('id', page.parent_id!).maybeSingle()) : null
+    parentSlug = parent?.slug ?? null
+  }
+  return { page, href: pageHref(page.slug, parentSlug) }
+}
+
+/** Officers' collections for one of the campus guides, in order */
+export const getGuidePicks = cache(async (guide: GuideKind): Promise<GuidePickRow[]> => {
+  const supabase = createPublicClient()
+  if (!supabase) return []
+  return quietly<GuidePickRow[]>([], () => supabase.from('guide_picks').select('*').eq('guide', guide).eq('published', true).order('sort').order('title'))
+})
 
 /** What the site's search looks through */
 export async function getSearchIndex(): Promise<SearchEntry[]> {
@@ -145,6 +224,7 @@ export const toPlace = (row: MapPlaceRow): Place => {
     lat: row.lat,
     lng: row.lng,
     address: row.address ?? undefined,
+    tip: row.tip ?? undefined,
   }
   if (!row.slug) return { ...place, id: `club-${row.id}`, description: row.description || 'Added by CSEG officers.', aliases: ['CSEG', 'club', ...row.aliases] }
   const builtIn = BUILDINGS_AND_SPACES.find((p) => p.id === row.slug)

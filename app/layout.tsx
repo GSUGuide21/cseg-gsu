@@ -48,7 +48,7 @@ export type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     // The init script may add .dark before hydration, so the class can differ from the server HTML
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

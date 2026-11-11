@@ -73,3 +73,21 @@ export const splitEvents = (own: readonly ClubEvent[], pin: readonly ClubEvent[]
     past: mine.filter((e) => Date.parse(e.end) <= now).sort((a, b) => Date.parse(b.start) - Date.parse(a.start)),
   }
 }
+
+/** The term an event fell in, on Atlanta's calendar: "Spring 2026" (January–May), "Summer 2026" (June–July), "Fall 2025" (August–December) */
+export const eventTerm = (startIso: string) => {
+  const [year, month] = new Date(startIso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }).split('-').map(Number)
+  return `${month <= 5 ? 'Spring' : month <= 7 ? 'Summer' : 'Fall'} ${year}`
+}
+
+/** Events by term, in the order given (so newest-first events make newest-first terms) */
+export const groupByTerm = <E extends Pick<ClubEvent, 'start'>>(events: readonly E[]): { term: string; events: E[] }[] => {
+  const groups: { term: string; events: E[] }[] = []
+  for (const e of events) {
+    const term = eventTerm(e.start)
+    const last = groups[groups.length - 1]
+    if (last?.term === term) last.events.push(e)
+    else groups.push({ term, events: [e] })
+  }
+  return groups
+}

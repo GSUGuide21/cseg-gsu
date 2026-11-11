@@ -6,6 +6,7 @@ import { useMemo, useState, type FC } from 'react'
 
 import { ActionMenu, Badge, Button, Dialog, EmptyState, Table, useNotify } from '@/components'
 import { Field, Input, Select, Switch, TextArea } from '@/components/Form'
+import { TIP_MAX } from '@/lib/dashboard/validate'
 import { deleteResource, reorderResources, saveResource, saveResourceGroups } from '@/lib/dashboard/actions'
 import { PLACES } from '@/lib/data/places'
 import type { ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
@@ -60,6 +61,9 @@ const ResourceDialog: FC<{ resource: ResourceRow | null; groups: ResourceGroupRo
         </Field>
         <Field label="What it’s for" description="One line, shown under its name.">
           <TextArea name="description" rows={2} defaultValue={resource?.description ?? ''} />
+        </Field>
+        <Field label="Insider tip" error={errors.tip} description="Optional. A line of advice in a student’s voice, set apart on its card.">
+          <Input name="tip" defaultValue={resource?.tip ?? ''} maxLength={TIP_MAX} placeholder="Book early in the term; appointments fill up by midterms." />
         </Field>
         <Field label="In a building" description="Adds “Show on map” to its card.">
           <Select name="place_id" type="combobox" defaultValue={resource?.place_id ?? null} options={PLACE_OPTIONS} placeholder="None" />

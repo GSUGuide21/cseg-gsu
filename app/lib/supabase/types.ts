@@ -125,7 +125,36 @@ export type PageRow = {
   unpublish_at: string | null
   review_requested: boolean
   review_note: string | null
+  /** The page it sits under (/parent/this); null at the top */
+  parent_id: string | null
+  /** Where the site's menu lists it */
+  nav_placement: NavPlacement
+  /** What the menu calls it; null uses its title */
+  nav_label: string | null
+  nav_sort: number
   updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Where a page is listed in the site's menu: the header's More menu, the footer, both, or neither */
+export type NavPlacement = 'none' | 'header' | 'footer' | 'both'
+
+/** Which campus guide a collection of picks is featured on (and so what's in it) */
+export type GuideKind = 'map' | 'eat' | 'resources'
+
+/** An officer's collection of places, eateries, or resources ("First-week essentials") */
+export type GuidePickRow = {
+  id: string
+  guide: GuideKind
+  title: string
+  description: string | null
+  /** One of the site's card icons, by name */
+  icon: string
+  /** Place ids, eatery slugs, or resource slugs, in order */
+  items: string[]
+  sort: number
+  published: boolean
   created_at: string
   updated_at: string
 }
@@ -151,6 +180,8 @@ export type MapPlaceRow = {
   aliases: string[]
   /** Other categories it's listed under */
   also_in: string[]
+  /** A short tip in a student's voice; null for none */
+  tip: string | null
   published: boolean
   created_at: string
   updated_at: string
@@ -192,6 +223,8 @@ export type EateryRow = {
   published: boolean
   /** When an officer last confirmed its details, "YYYY-MM-DD"; null if never */
   checked_on: string | null
+  /** A short tip in a student's voice; null for none */
+  tip: string | null
   created_at: string
   updated_at: string
 }
@@ -240,6 +273,8 @@ export type ResourceRow = {
   description: string
   /** The map place it's in, for "Show on map" */
   place_id: string | null
+  /** A short tip in a student's voice; null for none */
+  tip: string | null
   sort: number
   published: boolean
   created_at: string
@@ -539,13 +574,14 @@ export type Database = {
       members: Table<MemberRow, 'email' | 'major' | 'year' | 'status' | 'joined_on' | 'notes'>
       event_checkins: Table<CheckinRow, 'event_name' | 'member_id' | 'email' | 'checked_in_at' | 'checked_in_by'>
       posts: Table<PostRow, 'excerpt' | 'body' | 'cover_image_url' | 'status' | 'published_at' | 'publish_at' | 'unpublish_at' | 'category' | 'featured' | 'author_email' | 'author_name' | 'review_requested' | 'review_note'>
-      pages: Table<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'body' | 'status' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'review_requested' | 'review_note' | 'updated_by'>
+      pages: Table<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'body' | 'status' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'review_requested' | 'review_note' | 'updated_by' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort'>
+      guide_picks: Table<GuidePickRow, 'description' | 'icon' | 'items' | 'sort' | 'published'>
       page_redirects: Table<PageRedirectRow, 'created_at'>
-      map_places: Table<MapPlaceRow, 'slug' | 'category' | 'address' | 'description' | 'aliases' | 'also_in' | 'published'>
+      map_places: Table<MapPlaceRow, 'slug' | 'category' | 'address' | 'description' | 'aliases' | 'also_in' | 'published' | 'tip'>
       eatery_areas: Table<EateryAreaRow, 'description' | 'sort'>
       eatery_closures: Table<EateryClosureRow, 'eateries'>
       resource_groups: Table<ResourceGroupRow, 'description' | 'icon' | 'sort'>
-      resources: Table<ResourceRow, 'description' | 'place_id' | 'sort' | 'published'>
+      resources: Table<ResourceRow, 'description' | 'place_id' | 'sort' | 'published' | 'tip'>
       events: Table<ClubEventRow, 'location' | 'description' | 'href' | 'image_url' | 'image_alt' | 'status' | 'tags' | 'online_url' | 'sessions' | 'published'>
       executives: Table<ExecutiveRow, 'id' | 'bio' | 'is_founder' | 'avatar_url' | 'service' | 'contact' | 'published'>
       affiliates: Table<AffiliateRow, 'id' | 'wordmark_bottom' | 'summary' | 'description' | 'pin_key' | 'logo_url' | 'discord_url' | 'sort' | 'published'>
@@ -555,7 +591,7 @@ export type Database = {
       post_revisions: Table<PostRevisionRow, 'saved_by' | 'saved_at'>
       eateries: Table<
         EateryRow,
-        'dining_hall' | 'address' | 'description' | 'hours' | 'schedule' | 'status' | 'note' | 'lat' | 'lng' | 'locations' | 'place_id' | 'url' | 'aliases' | 'sort' | 'published' | 'checked_on'
+        'dining_hall' | 'address' | 'description' | 'hours' | 'schedule' | 'status' | 'note' | 'lat' | 'lng' | 'locations' | 'place_id' | 'url' | 'aliases' | 'sort' | 'published' | 'checked_on' | 'tip'
       >
       homepage: Table<HomepageRow, 'content' | 'updated_by'>
       page_meta: Table<PageMetaRow, 'title' | 'description' | 'updated_by'>

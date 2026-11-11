@@ -1,26 +1,32 @@
-import { ArrowUpRight, Clock, MapPin } from 'lucide-react'
+import { ArrowUpRight, Clock, MapPin, Utensils } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { EateryGrid } from '@/globals/Eateries'
+import { accentOf, GuidePicks } from '@/globals/GuidePicks'
 import { PageBlock, PageHeader } from '@/globals/Page'
 import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
 import { button, card, eyebrow, iconTile, inlineLink, pageShell } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
-import { getEatAreas, getEateries, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
+import { getEatAreas, getEateries, getGuidePicks, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
 import { EAT_LINKS, EAT_TIPS, EATS_CHECKED, MORE_EATS } from '@/lib/data/eats'
 import { eateriesIn, type Eatery, type EateryArea } from '@/lib/eateries'
+import { picksFor, type GuidePick } from '@/lib/guidePicks'
 import { SITE_PAGES } from '@/lib/sitePages'
 
-function EatContent({ eateries, areas }: { eateries: readonly Eatery[]; areas: readonly EateryArea[] }) {
+/** The guide at a glance, as chips under the title: how much is in it */
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+function EatContent({ eateries, areas, picks }: { eateries: readonly Eatery[]; areas: readonly EateryArea[]; picks: readonly GuidePick[] }) {
   const shown = areas.filter((a) => eateriesIn(eateries, a.slug).length)
+  const halls = eateries.filter((e) => e.diningHall).length
 
   return (
     <div className={pageShell}>
       <PageHeader
         eyebrow="Food"
         title="Places to eat"
-        lead="Campus dining halls, on-campus eateries, and nearby restaurants, cafés, quick bites, and late-night spots around Georgia State’s downtown campus."
+        lead="Twenty minutes between classes, or a whole evening to kill: here’s where Panthers actually eat. Dining halls, campus counters, and the restaurants, cafés, and late-night spots a short walk from class."
       >
         <Link href="/map?category=food" className={button()}>
           <MapPin size={16} aria-hidden />
@@ -37,6 +43,17 @@ function EatContent({ eateries, areas }: { eateries: readonly Eatery[]; areas: r
         </a>
       </PageHeader>
 
+      <ul className="-mt-6 m-0 flex list-none flex-wrap gap-2 p-0 text-[0.85rem] font-semibold text-ink-soft" aria-label="In this guide">
+        <li className="inline-flex items-center gap-1.5 rounded-full bg-brand-tint px-3 py-1 text-brand">
+          <Utensils size={14} aria-hidden />
+          {count(eateries.length, 'place to eat', 'places to eat')}
+        </li>
+        {halls ? <li className="rounded-full bg-fill px-3 py-1">{count(halls, 'dining hall', 'dining halls')}</li> : null}
+        <li className="rounded-full bg-fill px-3 py-1">{count(shown.length, 'part of town', 'parts of town')}</li>
+      </ul>
+
+      <GuidePicks picks={picks} />
+
       <aside className={card({ accent: true, className: 'flex items-start gap-4 p-5' })}>
         <span className={iconTile} aria-hidden>
           <Clock size={20} />
@@ -51,13 +68,16 @@ function EatContent({ eateries, areas }: { eateries: readonly Eatery[]; areas: r
 
       {/* Jump links */}
       <nav aria-label="Areas" className="-mt-4 flex flex-wrap gap-2">
-        {shown.map((area) => (
+        {shown.map((area, i) => (
           <a
             key={area.slug}
             href={`#${area.slug}`}
-            className="rounded-full border border-line px-3.5 py-1.5 text-[0.85rem] font-semibold text-ink-soft no-underline transition-colors hover:border-brand hover:text-brand"
+            style={accentOf(i)}
+            className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-1.5 text-[0.85rem] font-semibold text-ink-soft no-underline transition-colors hover:border-(--accent) hover:text-ink"
           >
+            <span aria-hidden className="size-2 rounded-full bg-(--accent)" />
             {area.title}
+            <span className="text-[0.75rem] font-bold text-ink-faint">{eateriesIn(eateries, area.slug).length}</span>
           </a>
         ))}
       </nav>
@@ -132,6 +152,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * until then. Either way the eateries are the dashboard's (or the built-in list until it has any).
  */
 export default async function EatPage() {
-  const page = await getPublishedPage('eat')
-  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.eat.eyebrow} /> : <EatContent eateries={await getEateries()} areas={await getEatAreas()} />
+  const [page, eateries, areas, rows] = await Promise.all([getPublishedPage('eat'), getEateries(), getEatAreas(), getGuidePicks('eat')])
+  const picks = picksFor('eat', rows, { eateries })
+  // The picks lead either page: the site's own, or the one officers wrote
+  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.eat.eyebrow} before={<GuidePicks picks={picks} />} /> : <EatContent eateries={eateries} areas={areas} picks={picks} />
 }

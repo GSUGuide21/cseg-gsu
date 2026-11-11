@@ -1,28 +1,20 @@
-import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
-import { getPageRedirect, getPublishedPage } from '@/lib/dashboard/public'
+import { getPageAt, getPageRedirect } from '@/lib/dashboard/public'
 import { isSitePage, pageHref, SITE_PAGES } from '@/lib/sitePages'
 
 export const revalidate = 300
 
-type Props = { params: Promise<{ slug: string }> }
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const page = await getPublishedPage((await params).slug)
-  return page ? managedPageMetadata(page) : {}
-}
-
 /**
- * A page officers wrote in the dashboard; one of the site's own (about, join…) shows at its
- * own path, and an address a page used to have forwards to where it is now.
+ * Where pages officers wrote used to live (/pages/guide). They're at /guide now, so this
+ * only forwards: to the page's address today, to a site page's own path, or, for an address
+ * a page used to have, to where that page is now.
  */
-export default async function CustomPage({ params }: Props) {
+export default async function OldPageAddress({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   if (isSitePage(slug)) permanentRedirect(SITE_PAGES[slug].path)
-  const page = await getPublishedPage(slug)
-  if (page) return <ManagedPage page={page} />
+  const found = await getPageAt([slug])
+  if (found) permanentRedirect(found.href)
   const movedTo = await getPageRedirect(slug)
   if (movedTo) permanentRedirect(pageHref(movedTo))
   notFound()

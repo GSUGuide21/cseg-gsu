@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- PIN's images and the dashboard's uploads, from wherever they're kept */
-import { Accessibility, ArrowUpRight, CalendarDays, Clock, MapPin, Video } from 'lucide-react'
+import { Accessibility, ArrowUpRight, CalendarDays, ChevronDown, Clock, MapPin, Video } from 'lucide-react'
 import Link from 'next/link'
 import type { ComponentType, FC } from 'react'
 
@@ -7,7 +7,7 @@ import { Badge } from '@/components'
 import { ACCOMMODATIONS } from '@/globals/config/club'
 import { card, grid2, iconTile, inlineLink } from '@/globals/ui/styles'
 import type { ClubEvent } from '@/lib/data/events'
-import { eventSessions, eventState } from '@/lib/events'
+import { eventSessions, eventState, groupByTerm } from '@/lib/events'
 import { findPlaceForLocation, mapHref } from '@/lib/data/places'
 import { cn } from '@/lib/cn'
 
@@ -70,6 +70,9 @@ export const EventCard: FC<{ event: ClubEvent; past?: boolean; now?: number; Rsv
   const state = eventState(event, now)
   const sessions = eventSessions(event)
   const over = past || state === 'ended'
+  const live = !over && state !== 'cancelled'
+  // The row of links under the card: only drawn when it has one, so a card without ends at its words
+  const hasLinks = !!event.href || (live && (!!event.onlineUrl || (!!Rsvp && !!event.rsvp)))
   return (
     <article id={`event-${event.id}`} className={card({ className: cn('flex scroll-mt-24 flex-col overflow-hidden', state === 'cancelled' && 'opacity-85') })}>
       {event.imageSrc ? (
@@ -135,8 +138,9 @@ export const EventCard: FC<{ event: ClubEvent; past?: boolean; now?: number; Rsv
             ))}
           </ul>
         ) : null}
+        {hasLinks ? (
         <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 pt-1">
-          {event.onlineUrl && !over && state !== 'cancelled' ? (
+          {event.onlineUrl && live ? (
             <a href={event.onlineUrl} className={cardLink} target="_blank" rel="noopener noreferrer">
               <Video size={14} aria-hidden />
               {state === 'live' ? 'Join online now' : 'Join online'}
@@ -148,8 +152,9 @@ export const EventCard: FC<{ event: ClubEvent; past?: boolean; now?: number; Rsv
               <ArrowUpRight size={14} aria-hidden />
             </a>
           ) : null}
-          {Rsvp && event.rsvp && !over && state !== 'cancelled' ? <Rsvp eventId={event.id} eventName={event.name} /> : null}
+          {Rsvp && event.rsvp && live ? <Rsvp eventId={event.id} eventName={event.name} /> : null}
         </div>
+        ) : null}
       </div>
     </article>
   )
@@ -194,3 +199,63 @@ export const EventGrid: FC<{ events: readonly ClubEvent[]; past?: boolean; class
     ))}
   </div>
 )
+
+/** One past event as a row: its day, its name, when and where it was, and a line about it */
+const PastEventRow: FC<{ event: ClubEvent }> = ({ event }) => (
+  <li id={`event-${event.id}`} className="flex scroll-mt-24 items-start gap-4 px-5 py-4">
+    <DateBadge iso={event.start} />
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <h4 className={cn('text-[1rem] leading-snug font-bold text-ink', event.cancelled && 'line-through decoration-2')}>
+        {event.name}
+        {event.cancelled ? <span className="sr-only"> (cancelled)</span> : null}
+      </h4>
+      <p className="flex flex-wrap gap-x-2 gap-y-0.5 text-[0.82rem] text-muted">
+        <span>
+          {formatDay(event.start)}, {formatTime(event.start)} – {formatTime(event.end)}
+        </span>
+        {event.location ? (
+          <span>
+            · <EventLocation location={event.location} />
+          </span>
+        ) : null}
+      </p>
+      {event.description ? <p className="line-clamp-2 text-[0.9rem] leading-[1.6] text-muted">{event.description}</p> : null}
+      {event.href ? (
+        <a href={event.href} className={cn(cardLink, 'mt-0.5')} target="_blank" rel="noopener noreferrer">
+          View on PIN
+          <ArrowUpRight size={14} aria-hidden />
+        </a>
+      ) : null}
+    </div>
+  </li>
+)
+
+const countOf = (n: number) => `${n} ${n === 1 ? 'event' : 'events'}`
+
+/**
+ * What's already happened, by term, newest first: the latest term open, and each earlier one
+ * folded under its name and count, so the page stays short however long the club's history
+ * gets. Rows rather than cards: a past event is something to look up, not to plan around.
+ */
+export const PastEvents: FC<{ events: readonly ClubEvent[]; className?: string }> = ({ events, className }) => {
+  const terms = groupByTerm(events)
+  if (!terms.length) return <p className="text-[0.95rem] text-muted">Nothing here yet. Events show up after they’ve happened.</p>
+  return (
+    <div className={cn('flex flex-col gap-3', className)}>
+      {terms.map(({ term, events: inTerm }, i) => (
+        <details key={term} open={i === 0} className={card({ className: 'group overflow-hidden' })}>
+          <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
+            <h3 className="text-[1.05rem] font-bold text-ink transition-colors group-hover:text-brand">{term}</h3>
+            <span className="rounded-full bg-fill px-2.5 py-0.5 text-[0.75rem] font-semibold text-muted">{countOf(inTerm.length)}</span>
+            <ChevronDown size={18} aria-hidden className="ml-auto text-muted transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          <ul className="m-0 list-none divide-y divide-line border-t border-line p-0">
+            {inTerm.map((event) => (
+              <PastEventRow key={event.id} event={event} />
+            ))}
+          </ul>
+        </details>
+      ))}
+    </div>
+  )
+}
