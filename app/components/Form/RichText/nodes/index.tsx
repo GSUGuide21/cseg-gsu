@@ -1,6 +1,7 @@
 'use client'
 
 import { NodeSelectionExtension } from '@lexical/extension'
+import { MarkNode } from '@lexical/mark'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { DRAG_DROP_PASTE } from '@lexical/rich-text'
 import { $insertNodeToNearestRoot, mergeRegister } from '@lexical/utils'
@@ -16,13 +17,14 @@ import {
 import { Icon } from 'lucide-react'
 import { createContext, useContext, useEffect, useMemo, useState, type FC, type ReactNode } from 'react'
 
-import { CALLOUT_TONES, type CalloutTone, type ImageData } from '@/lib/richtext/blocks'
+import { CALLOUT_TONES, type CalloutTone, type ColumnsLayout, type ImageData } from '@/lib/richtext/blocks'
 
 import { $replacingEmptyLine } from '../commands'
 import { uploadMessage, useRichTextOptions } from '../context'
 import { ButtonsDialog, type ButtonsData } from './ButtonsDialog'
 import { $createButtonsNode, ButtonsNode } from './ButtonsNode'
 import { CalloutNode } from './CalloutNode'
+import { $createColumnsNode, ColumnNode, ColumnsNode, registerColumns } from './ColumnsNodes'
 import { ImageDialog } from './ImageDialog'
 import { $createImageNode, ImageNode } from './ImageNode'
 import type { BlockDialogProps } from './DataBlockNode'
@@ -31,6 +33,7 @@ import { $isFaqItemNode, $newFaq, FaqAnswerNode, FaqItemNode, FaqNode, FaqQuesti
 
 export { $createCalloutNode, $isCalloutNode, CalloutNode } from './CalloutNode'
 export { $isButtonsNode, ButtonsNode } from './ButtonsNode'
+export { $columnsAround, $isColumnNode, $isColumnsNode, $removeColumns, $setColumnsLayout, ColumnNode, ColumnsNode } from './ColumnsNodes'
 export { $isImageNode, ImageNode } from './ImageNode'
 export { $addFaqItemAfter, $faqAtSelection, $isFaqQuestionNode, $removeFaq, $removeFaqItem, migrateFaqJSON } from './FaqNodes'
 
@@ -41,6 +44,8 @@ export const INSERT_IMAGE_COMMAND: LexicalCommand<ImageData> = createCommand('IN
 export const INSERT_BUTTONS_COMMAND: LexicalCommand<ButtonsData> = createCommand('INSERT_BUTTONS_COMMAND')
 /** A new FAQ, with the cursor in its first question */
 export const INSERT_FAQ_COMMAND: LexicalCommand<void> = createCommand('INSERT_FAQ_COMMAND')
+/** A row of empty columns, with the cursor in the first */
+export const INSERT_COLUMNS_COMMAND: LexicalCommand<ColumnsLayout> = createCommand('INSERT_COLUMNS_COMMAND')
 /** Steps, cards, or a video, with its data */
 export const INSERT_DATA_BLOCK_COMMAND: LexicalCommand<{ type: DataBlockType; data: Record<string, unknown> }> = createCommand('INSERT_DATA_BLOCK_COMMAND')
 
@@ -62,11 +67,26 @@ export const BlocksExtension = defineExtension({
     FaqItemNode,
     FaqQuestionNode,
     FaqAnswerNode,
+    ColumnsNode,
+    ColumnNode,
+    // Where officers' comments are, in the writing
+    MarkNode,
     ...Object.values(DATA_BLOCKS).map((b) => b.Node),
   ],
   register: (editor) =>
     mergeRegister(
       registerFaq(editor),
+      registerColumns(editor),
+      editor.registerCommand(
+        INSERT_COLUMNS_COMMAND,
+        (layout) => {
+          const row = $createColumnsNode(layout)
+          $insertBlock(row)
+          row.getFirstDescendant()?.selectStart()
+          return true
+        },
+        COMMAND_PRIORITY_EDITOR
+      ),
       editor.registerCommand(
         INSERT_FAQ_COMMAND,
         () => {
@@ -114,40 +134,48 @@ export const BlocksExtension = defineExtension({
  */
 export const ImageUploads: FC = () => {
   const [editor] = useLexicalComposerContext()
-  const { uploadImage, reportUpload } = useRichTextOptions()
+  const { uploadImage, uploadFile, reportUpload } = useRichTextOptions()
   useEffect(() => {
-    if (!uploadImage) return
+    if (!uploadImage && !uploadFile) return
     return editor.registerCommand(
       DRAG_DROP_PASTE,
       (files) => {
-        const images = files.filter((f) => f.type.startsWith('image/'))
-        if (!images.length) return false
-        reportUpload({ state: 'uploading', count: images.length })
+        // Images become images; other documents become File blocks, when the page can store them
+        const images = uploadImage ? files.filter((f) => f.type.startsWith('image/')) : []
+        const documents = uploadFile ? files.filter((f) => !f.type.startsWith('image/')) : []
+        if (!images.length && !documents.length) return false
+        reportUpload({ state: 'uploading', count: images.length + documents.length, what: images.length ? 'image' : 'file' })
         ;(async () => {
           try {
             for (const file of images) {
-              const src = await uploadImage(file)
+              const src = await uploadImage!(file)
               editor.update(() => {
                 $insertBlock($createImageNode({ src, alt: '', caption: '' }))
               })
             }
+            for (const file of documents) {
+              const { url, name } = await uploadFile!(file)
+              editor.update(() => {
+                $insertBlock(DATA_BLOCKS.file.$create({ href: url, name, note: '' }))
+              })
+            }
             reportUpload({ state: 'idle' })
           } catch (e) {
-            reportUpload({ state: 'failed', message: uploadMessage(e) })
+            reportUpload({ state: 'failed', message: uploadMessage(e, images.length ? 'image' : 'file') })
           }
         })()
         return true
       },
       COMMAND_PRIORITY_LOW
     )
-  }, [editor, uploadImage, reportUpload])
+  }, [editor, uploadImage, uploadFile, reportUpload])
   return null
 }
 
 /** The blocks the Insert tools put in through a dialog (an FAQ goes straight in, with insertFaq) */
 export type InsertableBlock = 'image' | 'buttons' | DataBlockType
 
-const BlockDialogsContext = createContext<{ open: (block: InsertableBlock) => void; openImage: () => void; openButtons: () => void; insertFaq: () => void } | null>(null)
+const BlockDialogsContext = createContext<{ open: (block: InsertableBlock) => void; openImage: () => void; openButtons: () => void; insertFaq: () => void; insertColumns: (layout: ColumnsLayout) => void } | null>(null)
 
 /** The insert tools' way into BlockDialogs: call open with the block */
 export const useBlockDialogs = () => useContext(BlockDialogsContext)!
@@ -166,6 +194,10 @@ export const BlockDialogs: FC<{ children: ReactNode }> = ({ children }) => {
       openButtons: () => setOpen('buttons'),
       insertFaq: () => {
         editor.dispatchCommand(INSERT_FAQ_COMMAND, undefined)
+        editor.focus()
+      },
+      insertColumns: (layout: ColumnsLayout) => {
+        editor.dispatchCommand(INSERT_COLUMNS_COMMAND, layout)
         editor.focus()
       },
     }),

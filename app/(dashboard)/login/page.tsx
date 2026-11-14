@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { Alert } from '@/components'
 import { getAccess } from '@/lib/dashboard/dal'
 import { safeNext } from '@/lib/dashboard/validate'
+import { siteHref } from '@/lib/siteUrl'
 import { LogoMark } from '@/globals/Logo'
 import { inlineLink } from '@/globals/ui/styles'
 
@@ -67,7 +68,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </>
         )}
 
-        <Link href="/" className={`${inlineLink} text-center text-[0.85rem]`}>
+        <Link href={siteHref('/')} className={`${inlineLink} text-center text-[0.85rem]`}>
           Back to the site
         </Link>
       </div>

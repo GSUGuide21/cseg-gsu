@@ -5,12 +5,17 @@ import { CONTACT_FIELDS, parseService } from '@/lib/executives'
 import { PLACE_CATEGORIES, placesWithEateries } from '@/lib/data/places'
 import { parseSchedule, scheduleJson } from '@/lib/eateries'
 import { homepageErrors, homepageFrom, type HomeButton, type HomepageContent } from '@/lib/homepage'
+import { chromePartErrors, chromePartFrom, isChromePart, type ChromePart, type SiteChrome } from '@/lib/siteChrome'
 import { BUILT_IN_PAGE_META, META_LIMITS } from '@/lib/pageMeta'
 import { CARD_ICONS } from '@/lib/richtext/blocks/cards'
 import { sectionId } from '@/lib/richtext/blocks/section'
 import {
   POST_CATEGORIES,
   PAGE_SECTIONS_MAX,
+  PRESENTATION_DESCRIPTION_MAX,
+  PRESENTATION_SLIDES_MAX,
+  PRESENTATION_VISIBILITIES,
+  type PresentationVisibility,
   PAGE_EYEBROW_MAX as EYEBROW_MAX,
   PAGE_SUBTITLE_MAX as SUBTITLE_MAX,
   SECTION_TITLE_MAX,
@@ -26,6 +31,7 @@ import {
   type OfficerRole,
   type PageLayout,
   type PageSection,
+  type PresentationSlide,
   type PublishStatus,
   type SponsorTier,
 } from '@/lib/supabase/types'
@@ -40,7 +46,9 @@ export type FieldErrors = Record<string, string>
 export type Parsed<T> = { ok: true; data: T } | { ok: false; errors: FieldErrors }
 
 /** What a server action hands back to its form */
-export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error?: string; errors?: FieldErrors }
+export type ActionResult =
+  | { ok: true; message?: string; id?: string; /** A post's or page's new save time, to check the next save against */ updatedAt?: string }
+  | { ok: false; error?: string; errors?: FieldErrors; /** Someone else saved it since it was opened: who, and when */ conflict?: { name: string; at: string } }
 
 export const YEARS: readonly MemberYear[] = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate']
 export const STATUSES: readonly MemberStatus[] = ['active', 'new', 'inactive']
@@ -136,6 +144,43 @@ export const isPublicUrl = (url: string) => {
   return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))
 }
 
+/** A presentation's slides, sent as JSON: each with an id, a title, and its writing; anything that isn't one is dropped */
+export function parseSlides(raw: FormDataEntryValue | null): PresentationSlide[] {
+  let list: unknown
+  try {
+    list = typeof raw === 'string' && raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+  if (!Array.isArray(list)) return []
+  return list
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .slice(0, PRESENTATION_SLIDES_MAX)
+    .map((s, i) => ({
+      id: typeof s.id === 'string' && /^[\w-]{1,64}$/.test(s.id) ? s.id : `slide-${i + 1}`,
+      title: typeof s.title === 'string' ? s.title.replace(/\s+/g, ' ').trim().slice(0, SECTION_TITLE_MAX) : '',
+      body: typeof s.body === 'string' ? s.body : '',
+    }))
+}
+
+/** A presentation: a title, a web address, a line about it, and its slides. A draft can be empty; a published one can't. */
+export function parsePresentation(form: FormData) {
+  const errors: FieldErrors = {}
+  const title = text(form.get('title'))
+  const slug = slugify(text(form.get('slug')) || title)
+  const status = (text(form.get('status')) || 'draft') as PublishStatus
+  const description = optional(form.get('description'))
+  const slides = parseSlides(form.get('slides'))
+  if (!title) errors.title = 'Add a title.'
+  if (!slug) errors.slug = 'Add a web address made of letters and numbers.'
+  if (status !== 'draft' && status !== 'published') errors.status = 'Pick draft or published.'
+  if (description && description.length > PRESENTATION_DESCRIPTION_MAX) errors.description = `Keep it under ${PRESENTATION_DESCRIPTION_MAX} characters.`
+  const visibility = (text(form.get('visibility')) || 'public') as PresentationVisibility
+  if (!PRESENTATION_VISIBILITIES.some((v) => v.value === visibility)) errors.visibility = 'Pick who can see it.'
+  if (status === 'published' && !slides.length) errors.slides = 'Add a slide before publishing.'
+  return done(errors, { title, slug, status, visibility, description, slides })
+}
+
 /** Where the site's menu can list a page */
 export const NAV_PLACEMENTS: readonly { value: NavPlacement; label: string }[] = [
   { value: 'none', label: 'Not in the menu' },
@@ -199,6 +244,9 @@ export function parseDocument(form: FormData) {
   if (!NAV_PLACEMENTS.some((p) => p.value === placement)) errors.nav_placement = 'Pick where the menu lists it.'
   const navLabel = optional(form.get('nav_label'))
   if (navLabel && navLabel.length > NAV_LABEL_MAX) errors.nav_label = `Keep it under ${NAV_LABEL_MAX} characters.`
+  // A different menu across the top on this page: one of the site's menus, by its id
+  const headerMenu = optional(form.get('header_menu'))
+  if (headerMenu && !/^[a-z0-9][a-z0-9-]{0,59}$/.test(headerMenu)) errors.header_menu = 'Pick one of the menus.'
   const publishAt = when('publish_at')
   const unpublishAt = when('unpublish_at')
   if (publishAt && unpublishAt && unpublishAt <= publishAt) errors.unpublish_at = 'Take it down after it goes up.'
@@ -214,6 +262,7 @@ export function parseDocument(form: FormData) {
     nav_placement: placement,
     nav_label: navLabel,
     nav_sort: Math.trunc(Number(text(form.get('nav_sort')) || 0)) || 0,
+    header_menu: headerMenu,
     category,
     featured: form.get('featured') === 'on',
     review_requested: form.get('review_requested') === 'on',
@@ -999,3 +1048,27 @@ export const coordsFrom = (text: string): { lat: number; lng: number } | null =>
 /** A path inside the site to go back to after signing in; anything else falls back to /dashboard */
 export const safeNext = (next: string | null | undefined) =>
   next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/dashboard'
+
+/** Every string in it, trimmed */
+const trimmed = <T>(value: T): T =>
+  (typeof value === 'string'
+    ? value.trim()
+    : Array.isArray(value)
+      ? value.map(trimmed)
+      : typeof value === 'object' && value !== null
+        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, trimmed(v)]))
+        : value) as T
+
+export type ChromeSave = { [P in ChromePart]: { part: P; content: SiteChrome[P] } }[ChromePart]
+
+/**
+ * One part of what frames the site (the navigation, header, footer, or search), sent as
+ * its name and one JSON field. Read over the built-in copy, trimmed, and checked field by field.
+ */
+export function parseSiteChrome(form: FormData): Parsed<ChromeSave> {
+  const part = form.get('part')
+  const raw = json(form.get('content'))
+  if (!isChromePart(part) || raw === null) return { ok: false, errors: { content: 'Couldn’t read that; reload and try again.' } }
+  const content = trimmed(chromePartFrom(part, raw))
+  return done(chromePartErrors(part, content), { part, content } as ChromeSave)
+}

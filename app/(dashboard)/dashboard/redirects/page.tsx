@@ -3,7 +3,7 @@ import { listRedirects } from '@/lib/dashboard/queries'
 
 import { RedirectsView } from './RedirectsView'
 
-export const metadata = { title: 'Redirects' }
+export const metadata = { title: 'Old links' }
 
 export default async function DashboardRedirectsPage() {
   await requireOfficer()

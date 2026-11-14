@@ -64,7 +64,7 @@ export const TitlesView: FC<{ rows: PageMetaRow[] | null; managed: Managed[] }> 
   if (!rows)
     return (
       <>
-        <PageTitle icon={<PanelTop />} title="Tab titles" />
+        <PageTitle icon={<PanelTop />} title="Page titles" />
         <Alert tone="warning" title="The page titles table isn’t set up yet">
           Run the page titles migration (npx supabase db push), then reload. Pages keep their own titles until then.
         </Alert>
@@ -97,7 +97,7 @@ export const TitlesView: FC<{ rows: PageMetaRow[] | null; managed: Managed[] }> 
 
   return (
     <>
-      <PageTitle icon={<PanelTop />} title="Tab titles" description="What the site’s own pages are called in the browser tab and in search results. Leave a field blank to keep the site’s own." />
+      <PageTitle icon={<PanelTop />} title="Page titles" description="What the site’s own pages are called in the browser tab and in search results. Leave a field blank to keep the site’s own." />
       <div className="flex flex-col gap-6 pb-6">
         <div className="grid items-start gap-4 xl:grid-cols-2">
           {editable.map((m) => {

@@ -4,9 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { atlantaToday } from '@/lib/eateries'
+import { CHROME_PARTS, missingMenus, navigationFrom } from '@/lib/siteChrome'
 import { isReservedSlug, isSitePage } from '@/lib/sitePages'
 import { createPublicClient } from '@/lib/supabase/server'
-import type { PageRow, PostRow } from '@/lib/supabase/types'
+import type { DocumentCommentRow, PageRow, PostRow, SiteChromeRow } from '@/lib/supabase/types'
 
 import { requireAdmin, requireOfficer, requireStaff } from './dal'
 import { formatDate } from './format'
@@ -35,10 +36,12 @@ import {
   parsePageMeta,
   parseOfficer,
   parsePlace,
+  parsePresentation,
   parseRedirect,
   parseResource,
   parseRsvp,
   parseSettings,
+  parseSiteChrome,
   parseSponsor,
   parseTerm,
   type ActionResult,
@@ -70,7 +73,7 @@ const revalidateSite = () => revalidatePath('/', 'layout')
  * Columns from the newest migration. Until it has run the database doesn't know them, so a
  * save that names one is tried again without them: everything else still saves.
  */
-const NEW_COLUMNS = new Set(['tip', 'parent_id', 'nav_placement', 'nav_label', 'nav_sort'])
+const NEW_COLUMNS = new Set(['tip', 'parent_id', 'nav_placement', 'nav_label', 'nav_sort', 'header_menu', 'previous_content', 'previous'])
 const isMissingColumn = (error: { code?: string } | null) => error?.code === 'PGRST204' || error?.code === '42703'
 const withoutNewColumns = <T extends object>(values: T) => Object.fromEntries(Object.entries(values).filter(([k]) => !NEW_COLUMNS.has(k))) as T
 
@@ -166,6 +169,34 @@ export async function undoCheckIn(id: string): Promise<ActionResult> {
 
 // ── Posts and pages ─────────────────────────────────────────────────────────
 
+/** The save the editor's copy was built on (sent as `loaded_at`), if it sent one */
+const loadedAt = (form: FormData) => {
+  const v = form.get('loaded_at')
+  return typeof v === 'string' && v && !Number.isNaN(Date.parse(v)) ? v : null
+}
+
+/**
+ * A save that changed nothing because the post or page was saved again after the editor
+ * opened it: says who by, so the editor can offer their version instead of overwriting it.
+ */
+const behind = async (supabase: Supabase, kind: 'page' | 'post', id: string): Promise<ActionResult> => {
+  const { table, key } = REVISIONS[kind]
+  const { data } = await supabase
+    .from(table as 'page_revisions')
+    .select('saved_at, saved_by')
+    .eq(key as 'page_id', id)
+    .order('saved_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) {
+    // No save of it at all: it's been deleted
+    const { count } = await supabase.from(kind === 'page' ? 'pages' : 'posts').select('id', { count: 'exact', head: true }).eq('id', id)
+    if (!count) return { ok: false, error: `That ${kind} has been deleted.` }
+  }
+  const name = data?.saved_by?.split('@')[0] ?? 'Someone else'
+  return { ok: false, error: `${name} saved this ${kind} after you opened it, so yours wasn’t saved over theirs.`, conflict: { name, at: data?.saved_at ?? new Date().toISOString() } }
+}
+
 export async function savePost(id: string | null, form: FormData): Promise<ActionResult> {
   const { supabase, officer } = await requireOfficer()
   const parsed = parseDocument(form)
@@ -180,17 +211,23 @@ export async function savePost(id: string | null, form: FormData): Promise<Actio
     publishedAt = wentUp ?? publish_at ?? new Date().toISOString()
   }
   const values = { ...row, ...(publishedAt ? { published_at: publishedAt } : {}), ...(id ? {} : { author_name: officer.name }) }
-  const { data, error } = id
-    ? await supabase.from('posts').update(values).eq('id', id).select('id').single()
-    : await supabase.from('posts').insert(values).select('id').single()
+  // Saved only over the version the editor has: no row changed means someone saved since
+  const expected = id ? loadedAt(form) : null
+  const { data, error } = !id
+    ? await supabase.from('posts').insert(values).select('id, updated_at').single()
+    : expected
+      ? await supabase.from('posts').update(values).eq('id', id).eq('updated_at', expected).select('id, updated_at').maybeSingle()
+      : await supabase.from('posts').update(values).eq('id', id).select('id, updated_at').single()
   if (error) return failure(error, 'That web address')
+  if (!data) return behind(supabase, 'post', id!)
   await log(supabase, id ? (status === 'published' ? 'updated post' : 'saved draft') : 'wrote post', title)
   revalidateSite()
-  return { ok: true, id: data.id, message: savedMessage(status, publish_at) }
+  return { ok: true, id: data.id, updatedAt: data.updated_at, message: savedMessage(status, publish_at) }
 }
 
 export async function deletePost(id: string): Promise<void> {
   const { supabase } = await requireOfficer()
+  await supabase.from('document_comments').delete().eq('doc_kind', 'post').eq('doc_id', id)
   const { data } = await supabase.from('posts').delete().eq('id', id).select('title').maybeSingle()
   await log(supabase, 'deleted post', data?.title)
   revalidateSite()
@@ -198,28 +235,37 @@ export async function deletePost(id: string): Promise<void> {
 }
 
 export async function savePage(id: string | null, form: FormData): Promise<ActionResult> {
-  const { supabase } = await requireOfficer()
+  const { supabase, officer } = await requireOfficer()
   const parsed = parseDocument(form)
   if (!parsed.ok) return parsed
-  const { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, nav_placement, nav_label, nav_sort } = parsed.data
+  const { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, nav_placement, nav_label, nav_sort, header_menu } = parsed.data
   if (isReservedSlug(slug)) return { ok: false, errors: { slug: `The site already uses /${slug} for something else. Pick another address.` } }
   // One of the site's own pages stays at its own path, so it can't sit under another
   const parent_id = isSitePage(slug) || parsed.data.parent_id === id ? null : parsed.data.parent_id
-  const values = { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, parent_id, nav_placement, nav_label, nav_sort, ...reviewOf(parsed.data) }
+  const values = { title, slug, status, body, description, subtitle, layout, sections, eyebrow, share_image_url, show_toc, show_updated, publish_at, unpublish_at, parent_id, nav_placement, nav_label, nav_sort, header_menu, updated_by: officer.email, ...reviewOf(parsed.data) }
+  // Saved only over the version the editor has: no row changed means someone saved since
+  const expected = id ? loadedAt(form) : null
   const { data, error } = await saving(values, (v) =>
-    id ? supabase.from('pages').update(v).eq('id', id).select('id').single() : supabase.from('pages').insert(v).select('id').single()
+    !id
+      ? supabase.from('pages').insert(v).select('id, updated_at').single()
+      : expected
+        ? supabase.from('pages').update(v).eq('id', id).eq('updated_at', expected).select('id, updated_at').maybeSingle()
+        : supabase.from('pages').update(v).eq('id', id).select('id, updated_at').single()
   )
   // The database keeps pages one level deep, and says which way it broke
   if (error?.code === 'P0001') return { ok: false, errors: { parent_id: error.message } }
   if (error?.code === '23503') return { ok: false, errors: { parent_id: 'That page is gone; pick another.' } }
-  if (error || !data) return failure(error ?? { message: 'That didn’t save.' }, 'That web address')
+  if (error) return failure(error, 'That web address')
+  if (!data) return id && expected ? behind(supabase, 'page', id) : failure({ message: 'That didn’t save.' })
   await log(supabase, id ? 'updated page' : 'created page', title)
   revalidateSite()
-  return { ok: true, id: data.id, message: savedMessage(status, publish_at) }
+  return { ok: true, id: data.id, updatedAt: data.updated_at, message: savedMessage(status, publish_at) }
 }
 
 export async function deletePage(id: string): Promise<void> {
   const { supabase } = await requireOfficer()
+  // Its comments go with it (they're only about its writing)
+  await supabase.from('document_comments').delete().eq('doc_kind', 'page').eq('doc_id', id)
   const { data } = await supabase.from('pages').delete().eq('id', id).select('title, slug').maybeSingle()
   await log(supabase, 'deleted page', data?.title)
   revalidateSite()
@@ -227,7 +273,7 @@ export async function deletePage(id: string): Promise<void> {
 }
 
 /** The first free address for a copy: hello-copy, then hello-copy-2 */
-const copySlug = async (supabase: Supabase, table: 'posts' | 'pages', slug: string) => {
+const copySlug = async (supabase: Supabase, table: 'posts' | 'pages' | 'presentations', slug: string) => {
   for (let n = 1; n <= 50; n++) {
     const candidate = `${slug}-copy${n > 1 ? `-${n}` : ''}`
     const { count, error } = await supabase.from(table).select('id', { count: 'exact', head: true }).eq('slug', candidate)
@@ -237,10 +283,10 @@ const copySlug = async (supabase: Supabase, table: 'posts' | 'pages', slug: stri
   return null
 }
 
-/** A new draft from a post or page, for what recurs: its writing, not its schedule or its place on the site */
-export async function duplicateDocument(kind: 'post' | 'page', id: string): Promise<ActionResult> {
+/** A new draft from a post, page, or presentation, for what recurs: its writing, not its schedule or its place on the site */
+export async function duplicateDocument(kind: 'post' | 'page' | 'presentation', id: string): Promise<ActionResult> {
   const { supabase, officer } = await requireOfficer()
-  const table = kind === 'post' ? 'posts' : 'pages'
+  const table = kind === 'post' ? 'posts' : kind === 'page' ? 'pages' : 'presentations'
   const insert = async (source: { slug: string; title: string }, row: Record<string, unknown>) => {
     const slug = await copySlug(supabase, table, source.slug)
     if (!slug) return { error: { message: 'There are too many copies of this already.' } as { code?: string; message: string }, data: null }
@@ -252,6 +298,11 @@ export async function duplicateDocument(kind: 'post' | 'page', id: string): Prom
     if (!post) return { ok: false, error: 'That post is gone.' }
     const { slug, title, excerpt, body, cover_image_url, category } = post
     result = await insert({ slug, title }, { excerpt, body, cover_image_url, category, author_name: officer.name })
+  } else if (kind === 'presentation') {
+    const { data: deck } = await supabase.from('presentations').select('*').eq('id', id).maybeSingle()
+    if (!deck) return { ok: false, error: 'That presentation is gone.' }
+    const { slug, title, description, slides, visibility } = deck
+    result = await insert({ slug, title }, { description, slides, visibility, author_name: officer.name })
   } else {
     const { data: page } = await supabase.from('pages').select('*').eq('id', id).maybeSingle()
     if (!page) return { ok: false, error: 'That page is gone.' }
@@ -284,6 +335,48 @@ export async function checkLinks(urls: string[]): Promise<string[]> {
     })
   )
   return results.filter((url): url is string => url !== null)
+}
+
+// ── Presentations ───────────────────────────────────────────────────────────
+
+/** Saves a slide deck. Like a post, it's saved only over the version the editor has. */
+export async function savePresentation(id: string | null, form: FormData): Promise<ActionResult> {
+  const { supabase, officer } = await requireOfficer()
+  const parsed = parsePresentation(form)
+  if (!parsed.ok) return parsed
+  const { title, status } = parsed.data
+  // Dated when it first goes up; one taken down and put back keeps its first date
+  let publishedAt: string | undefined
+  if (status === 'published') {
+    const existing = id ? (await supabase.from('presentations').select('published_at').eq('id', id).maybeSingle()).data : null
+    publishedAt = existing?.published_at ?? new Date().toISOString()
+  }
+  const values = { ...parsed.data, updated_by: officer.email, ...(publishedAt ? { published_at: publishedAt } : {}), ...(id ? {} : { author_name: officer.name }) }
+  const expected = id ? loadedAt(form) : null
+  const { data, error } = !id
+    ? await supabase.from('presentations').insert(values).select('id, updated_at').single()
+    : expected
+      ? await supabase.from('presentations').update(values).eq('id', id).eq('updated_at', expected).select('id, updated_at').maybeSingle()
+      : await supabase.from('presentations').update(values).eq('id', id).select('id, updated_at').single()
+  if (error) return failure(error, 'That web address')
+  if (!data) {
+    // Nothing changed: it was saved again after the editor opened it, or it's gone
+    const { data: now } = await supabase.from('presentations').select('updated_at, updated_by').eq('id', id!).maybeSingle()
+    if (!now) return { ok: false, error: 'That presentation has been deleted.' }
+    const name = now.updated_by?.split('@')[0] ?? 'Someone else'
+    return { ok: false, error: `${name} saved this presentation after you opened it, so yours wasn’t saved over theirs.`, conflict: { name, at: now.updated_at } }
+  }
+  await log(supabase, id ? (status === 'published' ? 'updated presentation' : 'saved draft') : 'created presentation', title)
+  revalidateSite()
+  return { ok: true, id: data.id, updatedAt: data.updated_at, message: status === 'published' ? 'Published' : 'Draft saved' }
+}
+
+export async function deletePresentation(id: string): Promise<void> {
+  const { supabase } = await requireOfficer()
+  const { data } = await supabase.from('presentations').delete().eq('id', id).select('title').maybeSingle()
+  await log(supabase, 'deleted presentation', data?.title)
+  revalidateSite()
+  redirect('/dashboard/presentations')
 }
 
 // ── Revisions ───────────────────────────────────────────────────────────────
@@ -319,7 +412,7 @@ export async function getRevision(kind: 'page' | 'post', revisionId: string) {
 
 /** Puts a saved version's writing back. That's a save too, so it can itself be undone from the history. */
 export async function restoreRevision(kind: 'page' | 'post', docId: string, revisionId: string): Promise<ActionResult> {
-  const { supabase } = await requireOfficer()
+  const { supabase, officer } = await requireOfficer()
   const { table, key } = REVISIONS[kind]
   const { data: revision } = await supabase.from(table as 'page_revisions').select('snapshot').eq('id', revisionId).eq(key as 'page_id', docId).maybeSingle()
   if (!revision) return { ok: false, error: 'That version is gone; only the newest 50 are kept.' }
@@ -327,7 +420,7 @@ export async function restoreRevision(kind: 'page' | 'post', docId: string, revi
   const values = Object.fromEntries(RESTORED[kind].filter((k) => k in snapshot).map((k) => [k, snapshot[k]]))
   const { data, error } =
     kind === 'page'
-      ? await supabase.from('pages').update(values as Partial<PageRow>).eq('id', docId).select('slug, title').single()
+      ? await supabase.from('pages').update({ ...values, updated_by: officer.email } as Partial<PageRow>).eq('id', docId).select('slug, title').single()
       : await supabase.from('posts').update(values as Partial<PostRow>).eq('id', docId).select('slug, title').single()
   if (error) return failure(error)
   await log(supabase, `restored an earlier version of ${kind === 'page' ? 'page' : 'post'}`, data.title)
@@ -724,12 +817,95 @@ export async function saveHomepage(form: FormData): Promise<ActionResult> {
   const { supabase, officer } = await requireOfficer()
   const parsed = parseHomepage(form)
   if (!parsed.ok) return parsed
-  const { error } = await supabase.from('homepage').update({ content: parsed.data, updated_by: officer.email }).eq('id', 1)
+  // What's there now is kept as the way back (unless nothing changed)
+  const { data: row } = await supabase.from('homepage').select('content').eq('id', 1).maybeSingle()
+  const keep = row && JSON.stringify(row.content) !== JSON.stringify(parsed.data) ? { previous_content: row.content } : {}
+  const { error } = await saving({ content: parsed.data, updated_by: officer.email, ...keep }, (v) => supabase.from('homepage').update(v).eq('id', 1))
   if (error) return failure(error)
   await log(supabase, 'updated the homepage')
   revalidatePath('/')
   revalidatePath('/dashboard/homepage')
   return { ok: true, message: 'Saved and on the homepage' }
+}
+
+// ── Comments on posts' and pages' writing ───────────────────────────────────
+
+const COMMENT_KINDS = new Set(['post', 'page'])
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const THREAD_RE = /^[a-z0-9-]{8,64}$/
+
+export type CommentKind = 'post' | 'page'
+
+/** A document's comments, oldest first; none before their migration runs */
+export async function listComments(kind: CommentKind, docId: string): Promise<DocumentCommentRow[]> {
+  const { supabase } = await requireOfficer()
+  if (!COMMENT_KINDS.has(kind) || !UUID_RE.test(docId)) return []
+  const { data, error } = await supabase.from('document_comments').select('*').eq('doc_kind', kind).eq('doc_id', docId).order('created_at')
+  return error ? [] : (data ?? [])
+}
+
+/** A comment from whoever's signed in: the first of a thread (with the words it's on), or a reply */
+export async function addComment(kind: CommentKind, docId: string, threadId: string, quote: string | null, body: string): Promise<ActionResult> {
+  const { supabase, officer } = await requireOfficer()
+  const text = body.trim()
+  if (!COMMENT_KINDS.has(kind) || !UUID_RE.test(docId) || !THREAD_RE.test(threadId)) return { ok: false, error: 'Couldn’t find what that comment is on. Reload and try again.' }
+  if (!text) return { ok: false, errors: { body: 'Write something first.' } }
+  if (text.length > 2000) return { ok: false, errors: { body: 'Keep a comment under 2,000 characters.' } }
+  const { data, error } = await supabase
+    .from('document_comments')
+    .insert({ doc_kind: kind, doc_id: docId, thread_id: threadId, quote: quote?.trim().slice(0, 500) || null, body: text, author_name: officer.name ?? officer.email.split('@')[0] })
+    .select('id')
+    .single()
+  if (error || !data) return failure(error ?? { message: 'That comment didn’t save.' })
+  return { ok: true, id: data.id }
+}
+
+/** Resolves a thread (or reopens it) */
+export async function setThreadResolved(kind: CommentKind, docId: string, threadId: string, resolved: boolean): Promise<ActionResult> {
+  const { supabase } = await requireOfficer()
+  if (!COMMENT_KINDS.has(kind) || !UUID_RE.test(docId) || !THREAD_RE.test(threadId)) return { ok: false, error: 'Couldn’t find that thread. Reload and try again.' }
+  const { error } = await supabase.from('document_comments').update({ resolved }).eq('doc_kind', kind).eq('doc_id', docId).eq('thread_id', threadId)
+  return error ? failure(error) : { ok: true }
+}
+
+/** Takes back a comment (one's own; an admin can take back anyone's) */
+export async function deleteComment(id: string): Promise<ActionResult> {
+  const { supabase } = await requireOfficer()
+  if (!UUID_RE.test(id)) return { ok: false, error: 'Couldn’t find that comment.' }
+  const { data, error } = await supabase.from('document_comments').delete().eq('id', id).select('id')
+  if (error) return failure(error)
+  // Row-level security turns away someone else's comment by deleting nothing
+  return data?.length ? { ok: true } : { ok: false, error: 'Only whoever wrote a comment (or an admin) can delete it.' }
+}
+
+// ── Navigation, header, footer, search ──────────────────────────────────────
+
+/** Saves one of them (the form names which); the others stay as they are */
+export async function saveSiteChrome(form: FormData): Promise<ActionResult> {
+  const { supabase, officer } = await requireOfficer()
+  const parsed = parseSiteChrome(form)
+  if (!parsed.ok) return parsed
+  const { part, content } = parsed.data
+  const { data: row } = await supabase.from('site_chrome').select('*').eq('id', 1).maybeSingle()
+  // A header or footer can only show menus that are there
+  if (part === 'header' || part === 'footer') {
+    const missing = missingMenus(part, content, navigationFrom(row?.navigation))
+    if (Object.keys(missing).length) return { ok: false, errors: missing }
+  }
+  const change: Partial<SiteChromeRow> = { updated_by: officer.email }
+  change[part] = content
+  // The part as it is now is kept as the way back (unless nothing changed)
+  if (row && JSON.stringify(row[part]) !== JSON.stringify(content)) {
+    const before = typeof row.previous === 'object' && row.previous !== null ? row.previous : {}
+    change.previous = { ...before, [part]: row[part] }
+  }
+  const { error } = await saving(change, (v) => supabase.from('site_chrome').update(v).eq('id', 1))
+  if (error) return failure(error)
+  const name = CHROME_PARTS[part].name
+  await log(supabase, `updated the site’s ${name.toLowerCase()}`)
+  // The header and footer are on every page of the site
+  revalidatePath('/', 'layout')
+  return { ok: true, message: `${name} saved and on the site` }
 }
 
 /** The built-in pages' tab titles and search descriptions, all at once */
@@ -1135,10 +1311,10 @@ export async function removeOfficer(email: string): Promise<ActionResult> {
 
 // ── Web addresses ───────────────────────────────────────────────────────────
 
-/** Whether a post or page web address is free (ignoring the one being edited) */
-export async function checkSlug(kind: 'post' | 'page', slug: string, exceptId: string | null): Promise<{ ok: true } | { ok: false; message: string }> {
+/** Whether a post, page, or presentation web address is free (ignoring the one being edited) */
+export async function checkSlug(kind: 'post' | 'page' | 'presentation', slug: string, exceptId: string | null): Promise<{ ok: true } | { ok: false; message: string }> {
   const { supabase } = await requireOfficer()
-  const table = kind === 'post' ? 'posts' : 'pages'
+  const table = kind === 'post' ? 'posts' : kind === 'page' ? 'pages' : 'presentations'
   let query = supabase.from(table).select('id', { count: 'exact', head: true }).eq('slug', slug)
   if (exceptId) query = query.neq('id', exceptId)
   const { count, error } = await query

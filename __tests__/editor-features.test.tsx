@@ -140,6 +140,36 @@ describe('The editor', () => {
     expect(sent.has('publish_at')).toBe(true)
   })
 
+  it('says which version it has when saving, and the next save follows on from the last', async () => {
+    actions.savePost.mockResolvedValueOnce({ ok: true, id: 'p1', message: 'Draft saved', updatedAt: '2026-11-14T16:00:00+00:00' } as never)
+    await open()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' })))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' })))
+    const sent = (n: number) => ((actions.savePost.mock.calls[n] as unknown[])[1] as FormData).get('loaded_at')
+    expect(sent(0)).toBe(stamp)
+    expect(sent(1)).toBe('2026-11-14T16:00:00+00:00')
+  })
+
+  it('offers someone else’s save instead of overwriting it, or to save over it', async () => {
+    actions.savePost.mockResolvedValueOnce({ ok: false, error: 'sam saved this post after you opened it.', conflict: { name: 'sam', at: '2026-11-14T15:30:00Z' } } as never)
+    await open()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' })))
+    expect(screen.getByText(/sam saved this post at/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload with their changes' })).toBeInTheDocument()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Save mine over theirs' })))
+    expect(((actions.savePost.mock.calls[1] as unknown[])[1] as FormData).has('loaded_at')).toBe(false)
+  })
+
+  it('asks before following a link with unsaved changes, and keeps them', async () => {
+    await open()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Changed title' } })
+    await act(async () => fireEvent.click(screen.getByRole('link', { name: /Posts/ })))
+    expect(screen.getByText('Leave without saving?')).toBeInTheDocument()
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Leave' })))
+    expect(push).toHaveBeenCalledWith('/dashboard/posts')
+    expect(JSON.parse(readDraft('post', 'p1')!.snapshot).title).toBe('Changed title')
+  })
+
   it('offers to schedule a post, as it does a page', async () => {
     await open()
     expect(screen.getByText('Goes live')).toBeInTheDocument()

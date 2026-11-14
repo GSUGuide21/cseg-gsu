@@ -53,6 +53,47 @@ export const POST_CATEGORIES = [
 /** "Recaps" from "recaps"; null for no category, or one no longer listed */
 export const postCategoryLabel = (category: string | null | undefined) => POST_CATEGORIES.find((c) => c.value === category)?.label ?? null
 
+/** How many slides a presentation holds at most */
+export const PRESENTATION_SLIDES_MAX = 80
+export const PRESENTATION_DESCRIPTION_MAX = 300
+
+/** Who can open a published presentation */
+export type PresentationVisibility = 'public' | 'unlisted' | 'private'
+export const PRESENTATION_VISIBILITIES: readonly { value: PresentationVisibility; label: string; description: string }[] = [
+  { value: 'public', label: 'Public', description: 'Listed at /presentations and in search. Anyone can open it.' },
+  { value: 'unlisted', label: 'Unlisted', description: 'Opens for anyone who has its address, but isn’t listed or searched.' },
+  { value: 'private', label: 'Private', description: 'Officers only, presented from the dashboard. Its address on the site isn’t found.' },
+]
+
+/** One slide: its title, and its writing (editor JSON, as a post's body is) */
+export type PresentationSlide = {
+  /** Stable while editing (each slide's editor is kept by it), and saved with it */
+  id: string
+  title: string
+  body: string
+}
+
+/** A slide deck, played at /presentations/its-slug */
+export type PresentationRow = {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  slides: PresentationSlide[]
+  status: PublishStatus
+  /** Published, who can open it */
+  visibility: PresentationVisibility
+  /** When it first went up */
+  published_at: string | null
+  author_email: string | null
+  /** How the site shows who made it; the officer list isn't public */
+  author_name: string | null
+  /** Who saved it last */
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type PostRow = {
   id: string
   slug: string
@@ -132,6 +173,8 @@ export type PageRow = {
   /** What the menu calls it; null uses its title */
   nav_label: string | null
   nav_sort: number
+  /** The menu the header shows on this page (a menu's id in the site's Navigation); null shows the site's own */
+  header_menu: string | null
   updated_by: string | null
   created_at: string
   updated_at: string
@@ -537,6 +580,37 @@ export type SponsorRow = {
 export type HomepageRow = {
   id: number
   content: unknown
+  /** What content was before the last save; missing before its migration runs, null before the first save */
+  previous_content?: unknown
+  updated_at: string
+  updated_by: string | null
+}
+
+/** An officer's comment on a post's or page's writing (only officers see these) */
+export type DocumentCommentRow = {
+  id: string
+  doc_kind: 'post' | 'page'
+  doc_id: string
+  /** The thread it's in: what marks the thread's words in the writing */
+  thread_id: string
+  /** The words the thread is on; only its first comment has them */
+  quote: string | null
+  body: string
+  author_email: string
+  author_name: string | null
+  resolved: boolean
+  created_at: string
+}
+
+/** What frames every page (one row); each part is its type in app/lib/siteChrome.ts, or {} */
+export type SiteChromeRow = {
+  id: number
+  navigation: unknown
+  header: unknown
+  footer: unknown
+  search: unknown
+  /** Each part as it was before its last save, by part; missing before its migration runs */
+  previous?: unknown
   updated_at: string
   updated_by: string | null
 }
@@ -574,7 +648,8 @@ export type Database = {
       members: Table<MemberRow, 'email' | 'major' | 'year' | 'status' | 'joined_on' | 'notes'>
       event_checkins: Table<CheckinRow, 'event_name' | 'member_id' | 'email' | 'checked_in_at' | 'checked_in_by'>
       posts: Table<PostRow, 'excerpt' | 'body' | 'cover_image_url' | 'status' | 'published_at' | 'publish_at' | 'unpublish_at' | 'category' | 'featured' | 'author_email' | 'author_name' | 'review_requested' | 'review_note'>
-      pages: Table<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'body' | 'status' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'review_requested' | 'review_note' | 'updated_by' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort'>
+      pages: Table<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'body' | 'status' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'review_requested' | 'review_note' | 'updated_by' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort' | 'header_menu'>
+      presentations: Table<PresentationRow, 'description' | 'slides' | 'status' | 'visibility' | 'published_at' | 'author_email' | 'author_name' | 'updated_by'>
       guide_picks: Table<GuidePickRow, 'description' | 'icon' | 'items' | 'sort' | 'published'>
       page_redirects: Table<PageRedirectRow, 'created_at'>
       map_places: Table<MapPlaceRow, 'slug' | 'category' | 'address' | 'description' | 'aliases' | 'also_in' | 'published' | 'tip'>
@@ -594,6 +669,8 @@ export type Database = {
         'dining_hall' | 'address' | 'description' | 'hours' | 'schedule' | 'status' | 'note' | 'lat' | 'lng' | 'locations' | 'place_id' | 'url' | 'aliases' | 'sort' | 'published' | 'checked_on' | 'tip'
       >
       homepage: Table<HomepageRow, 'content' | 'updated_by'>
+      document_comments: Table<DocumentCommentRow, 'id' | 'quote' | 'author_email' | 'author_name' | 'resolved' | 'created_at'>
+      site_chrome: Table<SiteChromeRow, 'navigation' | 'header' | 'footer' | 'search' | 'updated_by'>
       page_meta: Table<PageMetaRow, 'title' | 'description' | 'updated_by'>
       club_settings: Table<ClubSettingsRow, Exclude<keyof ClubSettingsRow, 'id' | 'updated_at'>>
       terms: Table<TermRow>

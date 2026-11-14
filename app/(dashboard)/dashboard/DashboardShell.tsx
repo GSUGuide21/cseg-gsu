@@ -1,11 +1,12 @@
 'use client'
 
-import { BadgeDollarSign, BookOpen, CalendarDays, CircleHelp, CornerUpRight, FileText, Handshake, Home, Images, Inbox, LayoutDashboard, LayoutTemplate, LogOut, MapPin, Newspaper, NotebookPen, PanelTop, PenSquare, Route, Settings, Star, UserPlus, UserRoundCog, Users, Utensils, Wallet } from 'lucide-react'
+import { BadgeDollarSign, BookOpen, CalendarDays, CircleHelp, CornerUpRight, FileText, Handshake, Home, Images, Inbox, LayoutDashboard, LayoutTemplate, LogOut, MapPin, Menu, Newspaper, NotebookPen, PanelBottom, PanelTop, PenSquare, Presentation, Route, Search, Settings, Star, Type, UserPlus, UserRoundCog, Users, Utensils, Wallet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { FC, ReactNode } from 'react'
 
 import { ActionMenu, AppShell, Avatar, CommandPalette, NotificationProvider, type Command, type NavSection } from '@/components'
 import { LogoMark } from '@/globals/Logo'
+import { siteHref } from '@/lib/siteUrl'
 import type { OfficerRole } from '@/lib/supabase/types'
 
 export interface ShellOfficer {
@@ -43,6 +44,7 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
   },
   {
     label: 'People',
+    description: 'Who’s in the club, and what they owe.',
     collapsible: true,
     items: [
       { label: 'Members', href: '/dashboard/members', icon: <Users /> },
@@ -53,6 +55,7 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
   },
   {
     label: 'Club',
+    description: 'Events, and the people and groups behind the club.',
     collapsible: true,
     items: [
       { label: 'Events', href: '/dashboard/events', icon: <CalendarDays /> },
@@ -63,35 +66,58 @@ const ALL_NAV = (unread: number, pending: number): NavSection[] => [
   },
   {
     label: 'Content',
+    description: 'What the website says: its homepage, posts, pages, and presentations.',
     collapsible: true,
     defaultOpen: false,
     items: [
       { label: 'Homepage', href: '/dashboard/homepage', icon: <LayoutTemplate /> },
       { label: 'Posts', href: '/dashboard/posts', icon: <Newspaper /> },
       { label: 'Pages', href: '/dashboard/pages', icon: <FileText /> },
+      { label: 'Presentations', href: '/dashboard/presentations', icon: <Presentation /> },
       { label: 'Media', href: '/dashboard/media', icon: <Images /> },
       { label: 'Questions', href: '/dashboard/faqs', icon: <CircleHelp /> },
-      { label: 'Tab titles', href: '/dashboard/titles', icon: <PanelTop /> },
-      { label: 'Redirects', href: '/dashboard/redirects', icon: <CornerUpRight /> },
+    ],
+  },
+  {
+    label: 'Menus & layout',
+    description: 'The menus, and the top and bottom of every page.',
+    collapsible: true,
+    defaultOpen: false,
+    items: [
+      { label: 'Navigation', href: '/dashboard/site/navigation', icon: <Menu /> },
+      { label: 'Search', href: '/dashboard/site/search', icon: <Search /> },
+      { label: 'Header', href: '/dashboard/site/header', icon: <PanelTop /> },
+      { label: 'Footer', href: '/dashboard/site/footer', icon: <PanelBottom /> },
     ],
   },
   {
     label: 'Campus guide',
+    description: 'The campus map, places to eat, and resources.',
     collapsible: true,
     defaultOpen: false,
     items: [
       { label: 'Map', href: '/dashboard/map', icon: <MapPin /> },
-      { label: 'Shortcuts', href: '/dashboard/connections', icon: <Route /> },
       { label: 'Eateries', href: '/dashboard/eateries', icon: <Utensils /> },
       { label: 'Resources', href: '/dashboard/resources', icon: <BookOpen /> },
       { label: 'Picks', href: '/dashboard/picks', icon: <Star /> },
     ],
   },
   {
+    label: 'Advanced',
+    description: 'Set once and rarely touched.',
+    collapsible: true,
+    defaultOpen: false,
+    items: [
+      { label: 'Page titles', href: '/dashboard/titles', icon: <Type /> },
+      { label: 'Old links', href: '/dashboard/redirects', icon: <CornerUpRight /> },
+      { label: 'Walking shortcuts', href: '/dashboard/connections', icon: <Route /> },
+    ],
+  },
+  {
     pinned: true,
     items: [
       { label: 'Settings', href: '/dashboard/settings', icon: <Settings /> },
-      { label: 'View the site', href: '/', icon: <Home /> },
+      { label: 'View the site', href: siteHref('/'), icon: <Home /> },
     ],
   },
 ]
@@ -118,6 +144,7 @@ export const DashboardShell: FC<{ officer: ShellOfficer; avatarUrl: string | nul
     ...nav.flatMap((s) => s.items).map((i) => ({ id: i.href, label: i.label, group: 'Go to', icon: i.icon, href: i.href })),
     { id: 'new-post', label: 'Write a post', group: 'Create', icon: <PenSquare />, href: '/dashboard/posts/new', keywords: ['blog', 'announcement'] },
     { id: 'new-page', label: 'Create a page', group: 'Create', icon: <FileText />, href: '/dashboard/pages/new' },
+    { id: 'new-presentation', label: 'Create a presentation', group: 'Create', icon: <Presentation />, href: '/dashboard/presentations/new', keywords: ['slides', 'deck'] },
     ...(officer.role === 'editor' ? [] : [{ id: 'add-member', label: 'Add a member', group: 'Create', icon: <UserPlus />, href: '/dashboard/members?add=1' }]),
     { id: 'sign-out', label: 'Sign out', group: 'Account', icon: <LogOut />, onSelect: signOut },
   ]
@@ -143,7 +170,7 @@ export const DashboardShell: FC<{ officer: ShellOfficer; avatarUrl: string | nul
               items={[
                 { label: name, description: [officer.title, ROLE_WORDS[officer.role]].filter(Boolean).join(' · '), disabled: true },
                 'separator',
-                { label: 'View the site', icon: <Home />, onSelect: () => router.push('/') },
+                { label: 'View the site', icon: <Home />, onSelect: () => window.location.assign(siteHref('/')) },
                 { label: 'Settings', icon: <Settings />, onSelect: () => router.push('/dashboard/settings') },
                 'separator',
                 { label: 'Sign out', icon: <LogOut />, onSelect: signOut },

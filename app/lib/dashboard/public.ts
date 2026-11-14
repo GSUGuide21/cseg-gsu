@@ -15,6 +15,8 @@ import { builtInMeta, withSaved, type PagePath } from '@/lib/pageMeta'
 import type { SiteContent } from '@/lib/references'
 import { BUILT_IN_RESOURCE_GROUPS, BUILT_IN_RESOURCES, resourceFromRow, resourceGroupFromRow, type Resource, type ResourceGroup } from '@/lib/resources'
 import { plainText } from '@/lib/richtext'
+import { BUILT_IN_CHROME, menuById, siteChromeFrom, type SiteChrome } from '@/lib/siteChrome'
+import type { NavItem } from '@/globals/config/nav'
 import type { SearchEntry } from '@/lib/search'
 import { affiliateFromRow } from '@/lib/affiliates'
 import { connectionFromRow } from '@/lib/connections'
@@ -24,7 +26,7 @@ import type { Connection } from '@/lib/wayfinding'
 import { pageHref, SITE_PAGES } from '@/lib/sitePages'
 import { createClient, createPublicClient } from '@/lib/supabase/server'
 import { sortSponsors, sponsorActive } from './terms'
-import type { GuideKind, GuidePickRow, AffiliateRow, ClubEventRow, ClubSettingsRow, FaqRow, MapConnectionRow, RedirectRow, SponsorRow, EateryAreaRow, ExecutiveRow, EateryClosureRow, EateryRow, HomepageRow, MapPlaceRow, PageMetaRow, PageRedirectRow, PageRow, PostRow, ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
+import type { GuideKind, GuidePickRow, AffiliateRow, ClubEventRow, ClubSettingsRow, FaqRow, MapConnectionRow, RedirectRow, SponsorRow, EateryAreaRow, ExecutiveRow, EateryClosureRow, EateryRow, HomepageRow, SiteChromeRow, MapPlaceRow, PageMetaRow, PageRedirectRow, PageRow, PostRow, PresentationRow, ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
 
 /**
  * What the public site reads from the dashboard: published posts, pages, and map pins.
@@ -150,12 +152,15 @@ export const getGuidePicks = cache(async (guide: GuideKind): Promise<GuidePickRo
 /** What the site's search looks through */
 export async function getSearchIndex(): Promise<SearchEntry[]> {
   const supabase = createPublicClient()
-  const [posts, pages, eateries, { resources }, affiliates] = await Promise.all([
+  const [posts, pages, eateries, { resources }, affiliates, decks] = await Promise.all([
     supabase ? quietly<Pick<PostRow, 'slug' | 'title' | 'excerpt' | 'body'>[]>([], () => supabase.from('posts').select('slug, title, excerpt, body').eq('status', 'published')) : [],
     supabase ? quietly<Pick<PageRow, 'slug' | 'title' | 'description' | 'body' | 'layout' | 'sections'>[]>([], () => supabase.from('pages').select('slug, title, description, body, layout, sections').eq('status', 'published')) : [],
     getEateries(),
     getResources(),
     getAffiliates(),
+    supabase
+      ? quietly<Pick<PresentationRow, 'slug' | 'title' | 'description' | 'slides'>[]>([], () => supabase.from('presentations').select('slug, title, description, slides').eq('status', 'published').eq('visibility', 'public'))
+      : [],
   ])
   const managed = new Set(pages.map((p) => pageHref(p.slug)))
   return [
@@ -169,6 +174,13 @@ export async function getSearchIndex(): Promise<SearchEntry[]> {
       text: p.layout === 'sections' ? p.sections.flatMap((s) => [s.title, plainText(s.body)]).join('\n') : plainText(p.body),
     })),
     ...posts.map((p) => ({ title: p.title, href: `/posts/${p.slug}`, kind: 'Post', summary: p.excerpt, text: plainText(p.body) })),
+    ...decks.map((d) => ({
+      title: d.title,
+      href: `/presentations/${d.slug}`,
+      kind: 'Presentation',
+      summary: d.description,
+      text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, plainText(s.body)]).join('\n'),
+    })),
     ...resources.map((r) => ({ title: r.label, href: r.href, kind: 'Resource', summary: r.description })),
     ...eateries.map((e) => ({ title: e.name, href: `${SITE_PAGES.eat.path}#${e.id}`, kind: 'Place to eat', summary: e.description, text: e.address })),
   ]
@@ -201,6 +213,25 @@ export async function getPublishedPost(slug: string) {
   const supabase = createPublicClient()
   if (!supabase) return null
   return quietly<PostRow | null>(null, () => supabase.from('posts').select('*').eq('status', 'published').eq('slug', slug).maybeSingle())
+}
+
+/** The published slide decks anyone can find (not the unlisted or private ones), newest first, without their slides' writing */
+export const getPublishedPresentations = cache(async () => {
+  const supabase = createPublicClient()
+  if (!supabase) return []
+  const rows = await quietly<Pick<PresentationRow, 'slug' | 'title' | 'description' | 'published_at' | 'updated_at' | 'author_name' | 'slides'>[]>([], () =>
+    supabase.from('presentations').select('slug, title, description, published_at, updated_at, author_name, slides').eq('status', 'published').eq('visibility', 'public').order('published_at', { ascending: false })
+  )
+  return rows.map(({ slides, ...deck }) => ({ ...deck, slideCount: Array.isArray(slides) ? slides.length : 0 }))
+})
+
+/** A slide deck: its draft while an officer previews, else the published one (the database keeps private ones to officers) */
+export async function getPublishedPresentation(slug: string) {
+  const preview = await previewClient()
+  if (preview) return quietly<PresentationRow | null>(null, () => preview.from('presentations').select('*').eq('slug', slug).maybeSingle())
+  const supabase = createPublicClient()
+  if (!supabase) return null
+  return quietly<PresentationRow | null>(null, () => supabase.from('presentations').select('*').eq('status', 'published').eq('slug', slug).maybeSingle())
 }
 
 /** A page: its draft while an officer previews, else the published one */
@@ -363,6 +394,39 @@ export async function getPageRedirect(slug: string): Promise<string | null> {
   const page = await quietly<Pick<PageRow, 'slug'> | null>(null, () => supabase.from('pages').select('slug').eq('id', redirect.page_id).eq('status', 'published').maybeSingle())
   return page && page.slug !== slug ? page.slug : null
 }
+
+/** The menu, header, footer, and search words: the dashboard's, over the built-in ones (all there is until officers save) */
+export const getSiteChrome = cache(async (): Promise<SiteChrome> => {
+  const supabase = createPublicClient()
+  if (!supabase) return BUILT_IN_CHROME
+  const row = await quietly<Pick<SiteChromeRow, 'navigation' | 'header' | 'footer' | 'search'> | null>(null, () =>
+    supabase.from('site_chrome').select('navigation, header, footer, search').eq('id', 1).maybeSingle()
+  )
+  return siteChromeFrom(row)
+})
+
+/**
+ * The pages that show a different menu in the header, by their path: a page that picked one
+ * of the site's menus, and the pages under it that didn't pick their own. A page whose menu
+ * has since been removed isn't here, so it shows the site's own.
+ */
+export const getPageMenus = cache(async (): Promise<Record<string, readonly NavItem[]>> => {
+  const supabase = createPublicClient()
+  if (!supabase) return {}
+  // Its own query: before the column's migration runs this reads as no menus, and the pages still list
+  const [rows, { navigation }] = await Promise.all([
+    quietly<Pick<PageRow, 'id' | 'slug' | 'parent_id' | 'header_menu'>[]>([], () => supabase.from('pages').select('id, slug, parent_id, header_menu').eq('status', 'published')),
+    getSiteChrome(),
+  ])
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const menus: Record<string, readonly NavItem[]> = {}
+  for (const row of rows) {
+    const parent = row.parent_id ? byId.get(row.parent_id) : undefined
+    const menu = menuById(navigation, row.header_menu) ?? menuById(navigation, parent?.header_menu ?? null)
+    if (menu) menus[pageHref(row.slug, parent?.slug)] = menu.links
+  }
+  return menus
+})
 
 /** The homepage's words: the dashboard's, over the built-in ones (which are all there is until officers save) */
 export const getHomepage = cache(async (): Promise<HomepageContent> => {

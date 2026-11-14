@@ -3,7 +3,7 @@ import { getPageMeta } from '@/lib/dashboard/queries'
 
 import { TitlesView } from './TitlesView'
 
-export const metadata = { title: 'Tab titles' }
+export const metadata = { title: 'Page titles' }
 
 export default async function DashboardTitlesPage() {
   await requireOfficer()

@@ -47,7 +47,8 @@ export const SectionsEditor: FC<{
   errors: Record<string, string | undefined>
   uploadImage?: (file: File) => Promise<string>
   imagePicker?: ComponentType<ImagePickerProps>
-}> = ({ sections, setSections, onText, errors, uploadImage, imagePicker }) => {
+  uploadFile?: (file: File) => Promise<{ url: string; name: string }>
+}> = ({ sections, setSections, onText, errors, uploadImage, imagePicker, uploadFile }) => {
   const patch = (id: string, change: Partial<PageSection>) => setSections((all) => all.map((s) => (s.id === id ? { ...s, ...change } : s)))
   const move = (i: number, by: -1 | 1) =>
     setSections((all) => {
@@ -130,6 +131,7 @@ export const SectionsEditor: FC<{
               defaultValue={s.body}
               uploadImage={uploadImage}
               imagePicker={imagePicker}
+              uploadFile={uploadFile}
               minHeight="8rem"
               placeholder="Write this section…"
               onChange={({ json, text }) => {

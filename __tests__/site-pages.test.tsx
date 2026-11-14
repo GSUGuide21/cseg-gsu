@@ -137,7 +137,7 @@ describe('the site’s pages, as dashboard pages', () => {
       parent_id: null,
       nav_placement: 'none',
       nav_label: null,
-      nav_sort: 0,
+      nav_sort: 0, header_menu: null,
       unpublish_at: null,
       layout: 'sections',
       body: '',

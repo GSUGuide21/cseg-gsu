@@ -9,9 +9,9 @@ export interface StoredDraft {
   snapshot: string
 }
 
-const keyFor = (kind: 'post' | 'page', id: string | null) => `cseg:draft:${kind}:${id ?? 'new'}`
+const keyFor = (kind: 'post' | 'page' | 'presentation', id: string | null) => `cseg:draft:${kind}:${id ?? 'new'}`
 
-export const readDraft = (kind: 'post' | 'page', id: string | null): StoredDraft | null => {
+export const readDraft = (kind: 'post' | 'page' | 'presentation', id: string | null): StoredDraft | null => {
   try {
     const stored = window.localStorage.getItem(keyFor(kind, id))
     const draft = stored ? (JSON.parse(stored) as Partial<StoredDraft>) : null
@@ -21,7 +21,7 @@ export const readDraft = (kind: 'post' | 'page', id: string | null): StoredDraft
   }
 }
 
-export const writeDraft = (kind: 'post' | 'page', id: string | null, snapshot: string) => {
+export const writeDraft = (kind: 'post' | 'page' | 'presentation', id: string | null, snapshot: string) => {
   try {
     window.localStorage.setItem(keyFor(kind, id), JSON.stringify({ savedAt: Date.now(), snapshot }))
   } catch {
@@ -29,7 +29,7 @@ export const writeDraft = (kind: 'post' | 'page', id: string | null, snapshot: s
   }
 }
 
-export const clearDraft = (kind: 'post' | 'page', id: string | null) => {
+export const clearDraft = (kind: 'post' | 'page' | 'presentation', id: string | null) => {
   try {
     window.localStorage.removeItem(keyFor(kind, id))
   } catch {

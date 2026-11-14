@@ -338,3 +338,12 @@
     }
   }
 }
+
+/* The rich text editor's find bar: every match, and the one that's picked out */
+::highlight(rte-find) {
+  background-color: color-mix(in srgb, var(--color-series-4, #facc15) 40%, transparent);
+}
+::highlight(rte-find-current) {
+  background-color: var(--color-series-4, #facc15);
+  color: #111827;
+}

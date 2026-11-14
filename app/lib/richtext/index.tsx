@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { useId, type CSSProperties, type FC, type ReactNode } from 'react'
+import { Fragment, useId, type CSSProperties, type FC, type ReactNode } from 'react'
 
 import { richTextTheme } from '@/components/Form/RichText/theme'
 import { cn } from '@/lib/cn'
@@ -18,6 +18,26 @@ import {
   ButtonRow,
   Callout,
   CardGrid,
+  columnsClasses,
+  Embed,
+  FileCard,
+  fileNameFrom,
+  galleryText,
+  parseColumnsLayout,
+  parseEmbedHeight,
+  parseEmbedSrc,
+  parseEmbedTitle,
+  parseFileHref,
+  parseFileName,
+  parseFileNote,
+  parseGalleryLayout,
+  parseGalleryPhotos,
+  parseImageAlign,
+  parseImageHref,
+  parseImageSize,
+  parseImageWidth,
+  parseLineHeight,
+  PhotoGallery,
   FaqItem,
   FaqList,
   faqClasses,
@@ -103,10 +123,17 @@ interface SerializedNode {
   /** A button row's */
   buttons?: unknown
   align?: string
-  /** An image's */
+  /** An image's (and an embed's src); an image's size, and its link in href */
   src?: string
   alt?: string
   caption?: string
+  size?: unknown
+  /** A gallery's or columns' layout */
+  layout?: unknown
+  /** A file's name and note; an embed's height; an image's own width */
+  name?: unknown
+  height?: unknown
+  width?: unknown
   /** An FAQ's questions, steps, or cards */
   items?: unknown
   /** A video's */
@@ -132,6 +159,17 @@ interface SerializedNode {
   dateStyle?: unknown
   /** A chip's */
   target?: unknown
+  /** A table's column widths (pixels, as dragged) and whether it's striped */
+  colWidths?: unknown
+  rowStriping?: unknown
+  /** A table cell's spans and background */
+  colSpan?: unknown
+  rowSpan?: unknown
+  backgroundColor?: unknown
+  /** A heading's #link, from withHeadingIds */
+  headingId?: string
+  /** State Lexical keeps beside a node's own fields: a block's line spacing */
+  $?: Record<string, unknown>
   /** A footnote's place in the document, and the ids it links by, from withFootnotes */
   number?: number
   anchor?: string
@@ -198,7 +236,12 @@ const kids = (n: SerializedNode, key: string) => (n.children ?? []).map((c, i) =
 const alignOf = (n: SerializedNode) => (typeof n.format === 'string' ? ALIGN[n.format] : undefined)
 
 /** A block's indent, by Lexical's step of 40px, as the editor draws it */
-const indentOf = (n: SerializedNode): CSSProperties | undefined => (typeof n.indent === 'number' && n.indent > 0 ? { paddingInlineStart: `${Math.min(n.indent, 10) * 40}px` } : undefined)
+const indentOf = (n: SerializedNode): CSSProperties | undefined => {
+  const indent = typeof n.indent === 'number' && n.indent > 0 ? { paddingInlineStart: `${Math.min(n.indent, 10) * 40}px` } : undefined
+  // A block's own line spacing, when it has one
+  const lineHeight = parseLineHeight(n.$?.lineHeight)
+  return indent || lineHeight ? { ...indent, ...(lineHeight ? { lineHeight } : {}) } : undefined
+}
 
 /** A list item: a nested list's has no bullet, and a checklist's says aloud whether it's done */
 const isNestedItem = (n: SerializedNode) => n.children?.length === 1 && n.children[0].type === 'list'
@@ -207,7 +250,7 @@ const listItem = (n: SerializedNode, key: string, check: boolean, value?: number
   const list = richTextTheme.list as Record<string, string> & { nested: { listitem: string } }
   const nested = isNestedItem(n)
   return (
-    <li key={key} value={value} className={cn(list.listitem, nested ? list.nested.listitem : check && (n.checked ? list.listitemChecked : list.listitemUnchecked), alignOf(n))}>
+    <li key={key} value={value} className={cn(list.listitem, nested ? list.nested.listitem : check && (n.checked ? list.listitemChecked : list.listitemUnchecked), alignOf(n))} style={indentOf({ ...n, indent: 0 })}>
       {check && !nested ? <span className="sr-only">{n.checked ? 'Done: ' : 'Not done: '}</span> : null}
       {kids(n, key)}
     </li>
@@ -236,9 +279,16 @@ const NODE_TYPES: RichTextNodeType = {
   ),
   heading: (n, key) => {
     const H = (HEADINGS.includes(n.tag ?? '') ? n.tag : 'h3') as HeadingTag
+    const id = n.headingId
     return (
-      <H key={key} id={H === 'h2' ? sectionId(nodeText(n)) || undefined : undefined} className={cn((richTextTheme.heading as Record<string, string>)[H], alignOf(n))} style={indentOf(n)}>
+      <H key={key} id={id} className={cn((richTextTheme.heading as Record<string, string>)[H], alignOf(n), id && 'group scroll-mt-24')} style={indentOf(n)}>
         {kids(n, key)}
+        {/* A #link to copy, on hover; the page's contents list is the way there from the keyboard */}
+        {id && (H === 'h2' || H === 'h3') ? (
+          <a href={`#${id}`} aria-hidden tabIndex={-1} className="ml-2 align-baseline text-[0.75em] font-normal text-ink-faint no-underline opacity-0 transition-opacity group-hover:opacity-100 hover:text-brand">
+            #
+          </a>
+        ) : null}
       </H>
     )
   },
@@ -283,6 +333,8 @@ const NODE_TYPES: RichTextNodeType = {
     )
   },
   autolink: 'link',
+  // Where an officer left a comment: only officers see comments, so on the site it's just the words
+  mark: (n, key) => <Fragment key={key}>{kids(n, key)}</Fragment>,
   horizontalrule: (_, key) => <hr key={key} className={richTextTheme.hr} />,
   callout: (n, key) => (
     <Callout key={key} tone={parseTone(n.tone)}>
@@ -295,8 +347,37 @@ const NODE_TYPES: RichTextNodeType = {
   },
   image: (n, key) => {
     const src = parseSrc(n.src)
-    return src ? <Figure key={key} src={src} alt={parseAlt(n.alt)} caption={parseCaption(n.caption)} /> : null
+    return src ? (
+      <Figure key={key} src={src} alt={parseAlt(n.alt)} caption={parseCaption(n.caption)} size={parseImageSize(n.size)} align={parseImageAlign(n.align)} href={parseImageHref(n.href)} width={parseImageWidth(n.width)} />
+    ) : null
   },
+  gallery: (n, key) => {
+    const photos = parseGalleryPhotos(n.items)
+    return photos.length ? <PhotoGallery key={key} photos={photos} layout={parseGalleryLayout(n.layout)} /> : null
+  },
+  file: (n, key) => {
+    const href = parseFileHref(n.href)
+    return href ? <FileCard key={key} href={href} name={parseFileName(n.name)} note={parseFileNote(n.note)} /> : null
+  },
+  embed: (n, key) => {
+    const src = parseEmbedSrc(n.src)
+    return src ? <Embed key={key} src={src} title={parseEmbedTitle(n.title)} height={parseEmbedHeight(n.height)} /> : null
+  },
+  columns: (n, key) => {
+    const c = columnsClasses(parseColumnsLayout(n.layout))
+    const columns = (n.children ?? []).filter((x) => x.type === 'column')
+    return columns.length ? (
+      <div key={key} className={c.row}>
+        {columns.map((col, i) => (
+          <div key={i} className={c.column}>
+            {kids(col, `${key}.${i}`)}
+          </div>
+        ))}
+      </div>
+    ) : null
+  },
+  // Drawn by its row; on its own (which the editor doesn't make), just what's in it
+  column: (n, key) => <div key={key}>{kids(n, key)}</div>,
   faq: (n, key) => {
     // Saved as data, before FAQs were typed in place
     if (n.items !== undefined) {
@@ -345,20 +426,41 @@ const NODE_TYPES: RichTextNodeType = {
     const item = legacyEateriesItem(n.area, n.kind)
     return item ? <ReferenceGrid key={key} items={[item]} /> : null
   },
-  table: (n, key) => (
-    <div key={key} className="my-3 overflow-x-auto">
-      <table className={richTextTheme.table}>
-        <tbody>{kids(n, key)}</tbody>
-      </table>
-    </div>
-  ),
+  table: (n, key) => {
+    // Widths set by dragging a column's edge, as shares of the table, so it still fits a phone
+    const widths = Array.isArray(n.colWidths) ? n.colWidths.filter((w): w is number => typeof w === 'number' && w > 0).slice(0, 50) : []
+    const total = widths.reduce((sum, w) => sum + w, 0)
+    return (
+      <div key={key} className="my-3 overflow-x-auto">
+        <table className={cn(richTextTheme.table, n.rowStriping === true && (richTextTheme.tableRowStriping as string))}>
+          {total ? (
+            <colgroup>
+              {widths.map((w, i) => (
+                <col key={i} style={{ width: `${((w / total) * 100).toFixed(2)}%` }} />
+              ))}
+            </colgroup>
+          ) : null}
+          <tbody>{kids(n, key)}</tbody>
+        </table>
+      </div>
+    )
+  },
   tablerow: (n, key) => <tr key={key}>{kids(n, key)}</tr>,
   tablecell: (n, key) => {
     // headerState: 1 is a header row, 2 a header column
     const header = !!n.headerState
     const C = header ? 'th' : 'td'
+    // A merged cell spans the cells it took in
+    const span = (v: unknown) => (typeof v === 'number' && v > 1 ? Math.min(Math.trunc(v), 50) : undefined)
     return (
-      <C key={key} scope={n.headerState === 1 ? 'col' : n.headerState === 2 ? 'row' : undefined} className={cn(richTextTheme.tableCell, header && richTextTheme.tableCellHeader)}>
+      <C
+        key={key}
+        scope={n.headerState === 1 ? 'col' : n.headerState === 2 ? 'row' : undefined}
+        colSpan={span(n.colSpan)}
+        rowSpan={span(n.rowSpan)}
+        style={typeof n.backgroundColor === 'string' ? safeStyle(`background-color: ${n.backgroundColor}`) : undefined}
+        className={cn(richTextTheme.tableCell, header && richTextTheme.tableCellHeader)}
+      >
         {kids(n, key)}
       </C>
     )
@@ -452,7 +554,7 @@ export type NodeParser = (n: SerializedNode) => string
  * Kinds whose children are separate lines: a document's blocks, a list's items, an FAQ's
  * entries, a table's rows. Everything else (a paragraph's words, a cell's) runs together.
  */
-const LINE_PER_CHILD = new Set(['root', 'list', 'tablerow', 'table', 'faq', 'faq-item', 'faq-answer'])
+const LINE_PER_CHILD = new Set(['root', 'list', 'tablerow', 'table', 'faq', 'faq-item', 'faq-answer', 'columns', 'column'])
 
 /** A node's children's words, a line each where the kind calls for it */
 const childrenText: NodeParser = (n) => (n.children ?? []).map(nodeText).join(LINE_PER_CHILD.has(n.type) ? '\n' : '')
@@ -467,6 +569,9 @@ const PLAIN_TEXT: Record<string, NodeParser> = {
   'code-highlight': (n) => n.text ?? '',
   linebreak: () => '\n',
   image: (n) => parseCaption(n.caption),
+  gallery: (n) => galleryText(parseGalleryPhotos(n.items)),
+  file: (n) => [parseFileName(n.name) || fileNameFrom(parseFileHref(n.href)), parseFileNote(n.note)].filter(Boolean).join('\n'),
+  embed: (n) => parseEmbedTitle(n.title),
   // Saved as data, before FAQs were typed in place; typed-in ones are their children
   faq: (n) =>
     n.items !== undefined
@@ -505,16 +610,33 @@ function nodeText(n: SerializedNode): string {
 /** How long something takes to read, in minutes, for "3 min read" */
 export const readingMinutes = (text: string) => Math.max(1, Math.round((text.trim() ? text.trim().split(/\s+/).length : 0) / WORDS_PER_MINUTE))
 
+/** The headings that get a #link: the ones that start a part of the writing */
+const LINKED_HEADINGS = new Set(['h2', 'h3', 'h4'])
+
+/**
+ * Each h2, h3, and h4 its #link, from its words; when two say the same, the second is
+ * "-2", and so on, so every link goes to its own heading
+ */
+const withHeadingIds = (root: SerializedNode): SerializedNode => {
+  const seen = new Map<string, number>()
+  const walk = (n: SerializedNode): SerializedNode => {
+    if (n.type === 'heading' && LINKED_HEADINGS.has(n.tag ?? '')) {
+      const base = sectionId(nodeText(n))
+      if (!base) return n
+      const count = (seen.get(base) ?? 0) + 1
+      seen.set(base, count)
+      return { ...n, headingId: count === 1 ? base : `${base}-${count}` }
+    }
+    return n.children ? { ...n, children: n.children.map(walk) } : n
+  }
+  return walk(root)
+}
+
 /** A document's main headings, with the #link each gets when it's shown, for an "On this page" list */
 export const documentHeadings = (source: string) => {
-  const seen = new Set<string>()
-  return (parseRichText(source)?.children ?? []).flatMap((n) => {
-    const text = n.type === 'heading' && n.tag === 'h2' ? nodeText(n).trim() : ''
-    const id = sectionId(text)
-    if (!id || seen.has(id)) return []
-    seen.add(id)
-    return [{ id, text }]
-  })
+  const root = parseRichText(source)
+  if (!root) return []
+  return (withHeadingIds(root).children ?? []).flatMap((n) => (n.type === 'heading' && n.tag === 'h2' && n.headingId ? [{ id: n.headingId, text: nodeText(n).trim() }] : []))
 }
 
 /** Just the words, for a word count or a summary */
@@ -543,9 +665,9 @@ const withFootnotes = (root: SerializedNode, anchor: string) => {
 export const RichContent: FC<{ root: SerializedNode; className?: string }> = ({ root, className }) => {
   // Its own ids, so two pieces of writing on a page (a page's sections) can't link into each other
   const anchor = useId()
-  const { numbered, notes } = withFootnotes(root, anchor)
+  const { numbered, notes } = withFootnotes(withHeadingIds(root), anchor)
   return (
-    <div className={cn('text-[1rem] text-ink-soft [&>*:first-child]:mt-0', className)}>
+    <div className={cn('flow-root text-[1rem] text-ink-soft [&>*:first-child]:mt-0', className)}>
       {kids(numbered, 'r')}
       {notes.length ? (
         <ol aria-label="Footnotes" className="mt-8 list-decimal border-t border-line pt-4 pl-6 text-[0.88rem] text-muted">

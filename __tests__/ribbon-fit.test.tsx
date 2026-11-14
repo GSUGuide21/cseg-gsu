@@ -63,7 +63,7 @@ const group = (name: string) => screen.getByRole('group', { name })
 const inTwoRows = (name: string) => group(name).querySelector('.grid-rows-2') !== null
 
 describe('the ribbon fitting its width', () => {
-  // The Insert tab is 1440 wide in one row, 930 in two
+  // The Insert tab is 1860 wide in one row, 1140 in two; up to the end of Live it's 910 in two
   it('keeps one row of big buttons when there’s room', () => {
     openInsert()
     expect(inTwoRows('Layout')).toBe(false)
@@ -71,20 +71,20 @@ describe('the ribbon fitting its width', () => {
   })
 
   it('moves to two rows before anything goes behind More', () => {
-    room = 1000
+    room = 1200
     openInsert()
     expect(inTwoRows('Layout')).toBe(true)
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
   })
 
   it('leaves a group of small tools as it is in two rows', () => {
-    room = 1000
+    room = 1200
     openInsert()
     expect(inTwoRows('In the line')).toBe(false)
   })
 
   it('puts groups behind More from the end, only as many as it must', async () => {
-    room = 700
+    room = 910
     openInsert()
     expect(screen.queryByRole('group', { name: 'Blocks' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'In the line' })).not.toBeInTheDocument()
@@ -104,7 +104,7 @@ describe('the ribbon fitting its width', () => {
   })
 
   it('brings everything back as the editor gets wider', () => {
-    room = 700
+    room = 910
     openInsert()
     expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
 
@@ -115,14 +115,14 @@ describe('the ribbon fitting its width', () => {
   })
 
   it('fits each tab on its own', () => {
-    room = 700
+    room = 910
     openInsert()
     fireEvent.click(screen.getByRole('tab', { name: 'Format' }))
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
   })
 
   it('keeps the arrow keys inside More', async () => {
-    room = 700
+    room = 910
     openInsert()
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
     const more = await screen.findByRole('dialog', { name: 'More tools' })

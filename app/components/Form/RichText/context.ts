@@ -9,11 +9,15 @@ export interface RichTextOptions {
   uploadImage?: (file: File) => Promise<string>
   /** A dialog for picking an image that's already stored */
   imagePicker?: ComponentType<ImagePickerProps>
+  /** Stores a document and gives back its address and a name for it; throws with a message to show */
+  uploadFile?: (file: File) => Promise<{ url: string; name: string }>
+  /** The file picker's accepted types (".pdf,.docx") */
+  fileAccept?: string
   /** Says how an upload went, under the writing area (pasted or dropped images) */
   reportUpload: (status: UploadStatus) => void
 }
 
-export type UploadStatus = { state: 'idle' } | { state: 'uploading'; count: number } | { state: 'failed'; message: string }
+export type UploadStatus = { state: 'idle' } | { state: 'uploading'; count: number; what?: 'image' | 'file' } | { state: 'failed'; message: string }
 
 /**
  * What the editor's blocks need from the page using it (the image upload). Set by
@@ -24,4 +28,4 @@ export const RichTextOptionsContext = createContext<RichTextOptions>({ reportUpl
 export const useRichTextOptions = () => useContext(RichTextOptionsContext)
 
 /** An upload's error, in words */
-export const uploadMessage = (error: unknown) => (error instanceof Error && error.message ? error.message : 'That image didn’t upload. Try again?')
+export const uploadMessage = (error: unknown, what = 'image') => (error instanceof Error && error.message ? error.message : `That ${what} didn’t upload. Try again?`)

@@ -13,11 +13,13 @@ import {
   Strikethrough,
   TextSelect,
   Underline,
+  MessageSquarePlus,
 } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 
 import type { ActionItem, ActionMenuEntry } from '../../ActionMenu/types'
 import { ContextMenu } from '../../ContextMenu'
+import { useEditorUI } from './ui'
 import { $clearFormatting, $hasHeaderRow, $selectedBlock, $toggleHeaderRow, BLOCK_ACTIONS, TABLE_ACTIONS } from './commands'
 import { useClipboard } from './tools'
 
@@ -38,6 +40,7 @@ export const RichTextContextMenu: FC<{ readOnly: boolean; children: ReactNode; c
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, f)
   }
 
+  const ui = useEditorUI()
   const items = (): ActionMenuEntry[] => {
     const { hasText, inTable, headerRow, blockItems } = editor.getEditorState().read(() => {
       const selection = $getSelection()
@@ -92,6 +95,7 @@ export const RichTextContextMenu: FC<{ readOnly: boolean; children: ReactNode; c
       { label: 'Underline', icon: <Underline />, shortcut: ['mod', 'U'], onSelect: () => format('underline') },
       { label: 'Strikethrough', icon: <Strikethrough />, onSelect: () => format('strikethrough') },
       { label: 'Clear formatting', icon: <RemoveFormatting />, description: 'Marks, font, size, and colors', onSelect: () => run($clearFormatting) },
+      ...(ui.commenting ? [{ label: 'Comment', icon: <MessageSquarePlus />, disabled: !hasText, onSelect: ui.startComment }] : []),
       ...(blockItems.length ? [{ label: 'Block', items: blockItems }] : []),
       ...(inTable ? [{ label: 'Table', items: tableItems }] : []),
       'separator',

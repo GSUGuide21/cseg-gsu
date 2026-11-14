@@ -16,7 +16,7 @@ import { ChevronDown, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FC } from 'react'
 
 import { ActionMenu } from '../../ActionMenu'
-import { $hasHeaderRow, $toggleHeaderRow, TABLE_ACTIONS } from './commands'
+import { $hasHeaderColumn, $hasHeaderRow, $hasRowStriping, $toggleHeaderColumn, $toggleHeaderRow, $toggleRowStriping, TABLE_ACTIONS } from './commands'
 
 /** Where something is, in the handles' layer */
 interface Box {
@@ -49,10 +49,14 @@ export const TableHandles: FC<{ disabled: boolean }> = ({ disabled }) => {
   const [cellKey, setCellKey] = useState<NodeKey | null>(null)
   const [hoverKey, setHoverKey] = useState<NodeKey | null>(null)
   const [headerRow, setHeaderRow] = useState(false)
+  const [headerColumn, setHeaderColumn] = useState(false)
+  const [striped, setStriped] = useState(false)
   const [focused, setFocused] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   // Where those are drawn; worked out again on scroll, resize, and every change
-  const [boxes, setBoxes] = useState<{ cell: Box | null; table: Box | null; view: Box | null }>({ cell: null, table: null, view: null })
+  const [boxes, setBoxes] = useState<{ cell: Box | null; table: Box | null; view: Box | null; cols: Box[] }>({ cell: null, table: null, view: null, cols: [] })
+  // A column edge being dragged: which column, where the drag began, every column's width then, and how far it's gone
+  const [resizing, setResizing] = useState<{ col: number; x: number; widths: number[]; by: number } | null>(null)
 
   const measure = useCallback(() => {
     const layer = layerRef.current?.getBoundingClientRect()
@@ -62,7 +66,9 @@ export const TableHandles: FC<{ disabled: boolean }> = ({ disabled }) => {
     const tableHost = hoverKey ? editor.getElementByKey(hoverKey) : null
     const tableEl = tableHost?.matches('table') ? tableHost : (tableHost?.querySelector('table') ?? null)
     const viewEl = tableEl?.parentElement && tableEl.parentElement !== editor.getRootElement() ? tableEl.parentElement : tableEl
-    setBoxes({ cell: cellEl ? boxOf(cellEl, layer) : null, table: tableEl ? boxOf(tableEl, layer) : null, view: viewEl ? boxOf(viewEl, layer) : null })
+    // The columns, by the first row's cells
+    const cols = tableEl ? [...(tableEl.querySelector('tr')?.children ?? [])].map((c) => boxOf(c, layer)) : []
+    setBoxes({ cell: cellEl ? boxOf(cellEl, layer) : null, table: tableEl ? boxOf(tableEl, layer) : null, view: viewEl ? boxOf(viewEl, layer) : null, cols })
   }, [editor, cellKey, hoverKey])
 
   // The cell the cursor's in, after every change
@@ -75,6 +81,8 @@ export const TableHandles: FC<{ disabled: boolean }> = ({ disabled }) => {
           const cell = anchor ? $getTableCellNodeFromLexicalNode(anchor) : null
           setCellKey(cell?.getKey() ?? null)
           setHeaderRow(cell ? $hasHeaderRow() : false)
+          setHeaderColumn(cell ? $hasHeaderColumn() : false)
+          setStriped(cell ? $hasRowStriping() : false)
         })
         // The hovered table may be gone (deleted, or undone)
         setHoverKey((key) => (key && editorState.read(() => $isTableNode($getNodeByKey(key))) ? key : null))
@@ -149,12 +157,54 @@ export const TableHandles: FC<{ disabled: boolean }> = ({ disabled }) => {
       } else $insertTableColumnAtNode(cell, true, true)
     })
 
+  /** Each column's width once the drag lets go; none narrower than a short word */
+  const MIN_COLUMN = 48
+  const finishResize = () => {
+    const r = resizing
+    setResizing(null)
+    if (!r || !r.by) return
+    const widths = r.widths.map((w, i) => (i === r.col ? Math.max(MIN_COLUMN, Math.round(w + r.by)) : Math.round(w)))
+    run(() => {
+      const t = hoverKey ? $getNodeByKey(hoverKey) : null
+      if ($isTableNode(t)) t.setColWidths(widths)
+    })
+  }
+
   if (disabled) return null
-  const { cell, table, view } = boxes
+  const { cell, table, view, cols } = boxes
   const showMenu = cell && (focused || menuOpen)
 
   return (
     <div ref={layerRef} className="pointer-events-none absolute inset-0 z-5">
+      {table && view
+        ? // Drag a column's right edge to widen or narrow it; double-click one to make every column even
+          cols.map((col, i) => (
+            <div
+              key={i}
+              data-table-handle
+              aria-hidden
+              title="Drag to resize the column (double-click to even them out)"
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.currentTarget.setPointerCapture(e.pointerId)
+                setResizing({ col: i, x: e.clientX, widths: cols.map((c) => c.width), by: 0 })
+              }}
+              onPointerMove={(e) => setResizing((r) => (r && r.col === i ? { ...r, by: Math.max(MIN_COLUMN - r.widths[i], e.clientX - r.x) } : r))}
+              onPointerUp={finishResize}
+              onPointerCancel={() => setResizing(null)}
+              onDoubleClick={() =>
+                run(() => {
+                  const t = hoverKey ? $getNodeByKey(hoverKey) : null
+                  if ($isTableNode(t)) t.setColWidths(undefined)
+                })
+              }
+              className="group pointer-events-auto absolute z-6 flex cursor-col-resize touch-none justify-center"
+              style={{ top: table.top, left: col.left + col.width - 4 + (resizing?.col === i ? resizing.by : 0), width: 8, height: table.height }}
+            >
+              <span className={`h-full w-0.5 rounded-full transition-colors ${resizing?.col === i ? 'bg-brand' : 'bg-transparent group-hover:bg-brand/60'}`} />
+            </div>
+          ))
+        : null}
       {table && view ? (
         <>
           {/* For the pointer: from the keyboard, the cell's menu inserts rows and columns */}
@@ -211,6 +261,8 @@ export const TableHandles: FC<{ disabled: boolean }> = ({ disabled }) => {
               ...TABLE_ACTIONS.filter((a) => !a.danger).map((a) => ({ label: a.label, onSelect: () => run(a.$run) })),
               'separator' as const,
               { label: headerRow ? 'Remove header row' : 'Make the first row headers', onSelect: () => run($toggleHeaderRow) },
+              { label: headerColumn ? 'Remove header column' : 'Make the first column headers', onSelect: () => run($toggleHeaderColumn) },
+              { label: striped ? 'Stop striping rows' : 'Stripe every other row', onSelect: () => run($toggleRowStriping) },
               'separator' as const,
               ...TABLE_ACTIONS.filter((a) => a.danger).map((a) => ({ label: a.label, danger: true, onSelect: () => run(a.$run) })),
             ]}

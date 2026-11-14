@@ -1,7 +1,6 @@
 'use client'
 
 import { History, RotateCcw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useEffect, useState, type FC } from 'react'
 
 import { Badge, Button, Dialog, EmptyState, Spinner, useNotify } from '@/components'
@@ -38,8 +37,17 @@ const Snapshot: FC<{ snap: Record<string, unknown> }> = ({ snap }) => {
  * summary, sections, and body; not the web address or whether it's published). Restoring
  * is a save of its own, so it can be undone the same way.
  */
-export const RevisionHistory: FC<{ kind: 'page' | 'post'; docId: string; open: boolean; onClose: () => void; dirty: boolean }> = ({ kind, docId, open, onClose, dirty }) => {
-  const router = useRouter()
+export const RevisionHistory: FC<{
+  kind: 'page' | 'post'
+  docId: string
+  open: boolean
+  onClose: () => void
+  dirty: boolean
+  /** Published: a restore shows on the site right away */
+  live?: boolean
+  /** After a restore, to open the restored writing in the editor */
+  onRestored: () => void
+}> = ({ kind, docId, open, onClose, dirty, live = false, onRestored }) => {
   const { confirm, toast } = useNotify()
   const [list, setList] = useState<RevisionSummary[] | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
@@ -71,14 +79,15 @@ export const RevisionHistory: FC<{ kind: 'page' | 'post'; docId: string; open: b
 
   const restore = async () => {
     if (!picked) return
-    if (dirty && !(await confirm({ title: 'Restore this version?', message: 'Your unsaved changes here will be lost.', variant: 'warning', confirmLabel: 'Restore' }))) return
+    const cost = [live ? `This ${kind} is published, so the restored version shows on the site right away.` : '', dirty ? 'Your unsaved changes here will be lost.' : ''].filter(Boolean).join(' ')
+    if (cost && !(await confirm({ title: 'Restore this version?', message: cost, variant: 'warning', confirmLabel: 'Restore' }))) return
     setRestoring(true)
     const result = await restoreRevision(kind, docId, picked)
     setRestoring(false)
     if (!result.ok) return toast({ variant: 'error', title: 'Couldn’t restore', message: result.error })
-    toast({ variant: 'success', title: 'Restored. It’s saved; publish it when it looks right.' })
+    toast({ variant: 'success', title: live ? 'Restored, and live on the site.' : 'Restored. It’s saved; publish it when it looks right.' })
     onClose()
-    router.refresh()
+    onRestored()
   }
 
   const current = list?.[0]?.id
@@ -88,7 +97,7 @@ export const RevisionHistory: FC<{ kind: 'page' | 'post'; docId: string; open: b
       onClose={onClose}
       size="lg"
       title="History"
-      description="Every save, newest first (the newest 50 are kept). Restoring brings back the writing; the web address and whether it’s published stay as they are."
+      description="Every save, newest first (the newest 50 are kept). Restoring brings back the writing; the web address and whether it’s published stay as they are, so a published one changes on the site right away."
       footer={
         <>
           <Button size="sm" variant="outline" onClick={onClose}>

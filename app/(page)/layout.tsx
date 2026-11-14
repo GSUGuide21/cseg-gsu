@@ -5,7 +5,8 @@ import { Footer } from '@/globals/Footer'
 import { Header } from '@/globals/Header'
 import { PreviewBanner } from '@/globals/PreviewBanner'
 import { SiteBanner } from '@/globals/SiteBanner'
-import { getClubDetails, getNavPages } from '@/lib/dashboard/public'
+import { getClubDetails, getNavPages, getPageMenus, getSiteChrome } from '@/lib/dashboard/public'
+import { footerBottomLinks, footerColumns, headerLinks } from '@/lib/siteChrome'
 
 /**
  * What search and link previews fall back to, as officers set them in Settings: the site's
@@ -21,17 +22,17 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
-  // The pages officers put in the menu, with the site's own
-  const [details, nav] = await Promise.all([getClubDetails(), getNavPages()])
+  // The header and footer as the dashboard has them (each showing the menus it was given), and the pages officers put in the menu
+  const [details, nav, chrome, pageMenus] = await Promise.all([getClubDetails(), getNavPages(), getSiteChrome(), getPageMenus()])
   return (
     <ClubDetailsProvider details={details}>
       <PreviewBanner />
-      <Header pages={nav.header} />
+      <Header pages={nav.header} links={headerLinks(chrome)} pageMenus={pageMenus} header={chrome.header} />
       <main className="min-h-screen pt-header">
         <SiteBanner />
         {children}
       </main>
-      <Footer pages={nav.footer} />
+      <Footer pages={nav.footer} sections={footerColumns(chrome)} bottomLinks={footerBottomLinks(chrome)} cta={chrome.footer.cta} />
     </ClubDetailsProvider>
   )
 }

@@ -17,6 +17,10 @@ export const documentAssets = (bodies: readonly string[]) => {
     if ((node.type === 'image' || node.type === 'inline-image') && typeof node.src === 'string') images.push({ src: node.src, alt: typeof node.alt === 'string' ? node.alt : '' })
     if ((node.type === 'link' || node.type === 'autolink') && typeof node.url === 'string') links.push(node.url)
     if (node.type === 'inline-button' && typeof node.href === 'string') links.push(node.href)
+    if (node.type === 'image' && typeof node.href === 'string' && node.href) links.push(node.href)
+    if (node.type === 'file' && typeof node.href === 'string') links.push(node.href)
+    if (node.type === 'gallery' && Array.isArray(node.items))
+      for (const p of node.items as { src?: unknown; alt?: unknown }[]) if (typeof p?.src === 'string') images.push({ src: p.src, alt: typeof p.alt === 'string' ? p.alt : '' })
     node.children?.forEach(walk)
   }
   for (const body of bodies) {

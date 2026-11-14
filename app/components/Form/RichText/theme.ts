@@ -46,6 +46,11 @@ export const richTextTheme: EditorThemeClasses = {
   tableCell: 'relative min-w-20 border border-line px-2.5 py-1.5 text-left align-top',
   tableCellHeader: 'bg-fill font-semibold',
   tableCellSelected: 'bg-brand-tint',
+  // Words with a comment on them, and with more than one
+  mark: 'rounded-xs border-b-2 border-warning/70 bg-warning/15 text-inherit',
+  markOverlap: 'bg-warning/30',
+  // Every other body row shaded (a header row keeps its own fill)
+  tableRowStriping: '[&_tr:nth-child(even)>td]:bg-fill/70',
   tableSelection: 'selection:bg-transparent',
   hr: 'my-5 border-0 border-t-2 border-line [&.selected]:border-brand',
   link: 'text-brand underline underline-offset-2',

@@ -6,6 +6,22 @@ import {
   CARD_TITLE_MAX,
   CARDS_MAX,
   CardGrid,
+  Embed,
+  FileCard,
+  PhotoGallery,
+  embedProvider,
+  fileNameFrom,
+  galleryText,
+  parseEmbedHeight,
+  parseEmbedSrc,
+  parseEmbedTitle,
+  parseFileHref,
+  parseFileName,
+  parseFileNote,
+  parseGalleryLayout,
+  parseGalleryPhotos,
+  type EmbedData,
+  type FileData,
   inlinePlain,
   parseCards,
   parseProvider,
@@ -97,6 +113,7 @@ import { ChipDialog, FootnoteDialog, InlineBadgeDialog, InlineButtonDialog, Inli
 import { ReferencesDialog, type ReferencesData } from './ReferencesDialog'
 import { ListDialog } from './ListDialog'
 import { CoreValuesDialog, EventsDialog, PlaceDialog, type CoreValuesData, type EventsData, type PlaceData } from './LiveDialogs'
+import { EmbedDialog, FileDialog, GalleryDialog, type GalleryData } from './MediaDialogs'
 import { VideoDialog } from './VideoDialog'
 
 /** An element with text in it, for the readable HTML export */
@@ -225,6 +242,59 @@ export const VideoBlock = defineDataBlock<{ provider: VideoProvider | ''; id: st
   toDOM: (v, doc) => {
     const a = el(doc, 'a', v.title || 'Watch the video')
     if (v.provider) a.setAttribute('href', watchUrl({ provider: v.provider, id: v.id }))
+    return el(doc, 'p', undefined, a)
+  },
+  text: ({ title }) => title,
+})
+
+export const GalleryBlock = defineDataBlock<GalleryData>({
+  type: 'gallery',
+  label: 'Photo gallery',
+  fields: { items: parseGalleryPhotos, layout: parseGalleryLayout },
+  has: ({ items }) => items.length > 0,
+  View: ({ data }) => <PhotoGallery photos={data.items} layout={data.layout} preview />,
+  Dialog: GalleryDialog,
+  toDOM: ({ items }, doc) =>
+    el(
+      doc,
+      'div',
+      undefined,
+      ...items.map((p) => {
+        const img = doc.createElement('img')
+        img.src = p.src
+        img.alt = p.alt
+        return el(doc, 'figure', undefined, img, ...(p.caption ? [el(doc, 'figcaption', p.caption)] : []))
+      })
+    ),
+  text: ({ items }) => galleryText(items),
+})
+
+export const FileBlock = defineDataBlock<FileData>({
+  type: 'file',
+  label: 'File',
+  fields: { href: parseFileHref, name: parseFileName, note: parseFileNote },
+  has: ({ href }) => !!href,
+  View: ({ data }) => <FileCard {...data} preview />,
+  Dialog: FileDialog,
+  toDOM: ({ href, name, note }, doc) => {
+    const a = el(doc, 'a', name || fileNameFrom(href) || 'File')
+    a.setAttribute('href', href)
+    return el(doc, 'p', undefined, a, ...(note ? [doc.createTextNode(` (${note})`)] : []))
+  },
+  text: ({ href, name, note }) => [name || fileNameFrom(href), note].filter(Boolean).join('\n'),
+})
+
+export const EmbedBlock = defineDataBlock<EmbedData>({
+  type: 'embed',
+  label: 'Embed',
+  fields: { src: parseEmbedSrc, title: parseEmbedTitle, height: parseEmbedHeight },
+  has: ({ src }) => !!src,
+  View: ({ data }) => <Embed {...data} preview />,
+  Dialog: EmbedDialog,
+  // A link to it, which reads anywhere; the frame is rebuilt from the data
+  toDOM: ({ src, title }, doc) => {
+    const a = el(doc, 'a', title || embedProvider(src))
+    a.setAttribute('href', src)
     return el(doc, 'p', undefined, a)
   },
   text: ({ title }) => title,
@@ -458,6 +528,9 @@ export const DATA_BLOCKS = {
   ranking: RankingBlock,
   cards: CardsBlock,
   video: VideoBlock,
+  gallery: GalleryBlock,
+  file: FileBlock,
+  embed: EmbedBlock,
   reference: ReferencesBlock,
   stats: StatsBlock,
   schedule: ScheduleBlock,

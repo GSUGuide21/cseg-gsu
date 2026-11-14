@@ -17,11 +17,11 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams
   const kind = params.get('kind')
   const id = params.get('id') ?? ''
-  if ((kind !== 'page' && kind !== 'post') || !/^[0-9a-f-]{36}$/i.test(id)) return new Response('Not something to preview', { status: 400 })
+  if ((kind !== 'page' && kind !== 'post' && kind !== 'presentation') || !/^[0-9a-f-]{36}$/i.test(id)) return new Response('Not something to preview', { status: 400 })
 
-  const { data } = await supabase.from(kind === 'page' ? 'pages' : 'posts').select('slug').eq('id', id).maybeSingle()
-  if (!data) return new Response('No such page or post', { status: 404 })
+  const { data } = await supabase.from(kind === 'page' ? 'pages' : kind === 'post' ? 'posts' : 'presentations').select('slug').eq('id', id).maybeSingle()
+  if (!data) return new Response('No such page, post, or presentation', { status: 404 })
 
   ;(await draftMode()).enable()
-  redirect(kind === 'page' ? pageHref(data.slug) : `/posts/${data.slug}`)
+  redirect(kind === 'page' ? pageHref(data.slug) : `/${kind}s/${data.slug}`)
 }

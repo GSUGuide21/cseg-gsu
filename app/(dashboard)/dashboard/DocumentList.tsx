@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, ExternalLink, FileText, Newspaper, Pencil, Pin, Plus } from 'lucide-react'
+import { Copy, ExternalLink, FileText, Newspaper, Pencil, Pin, Play, Plus, Presentation } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { FC } from 'react'
@@ -8,7 +8,7 @@ import type { FC } from 'react'
 import { ActionMenu, Badge, Button, EmptyState, SortFilterBar, Table, useSortFilter, type SortFilterField, type SortOption, type Tone } from '@/components'
 import { duplicateDocument } from '@/lib/dashboard/actions'
 import { formatDate } from '@/lib/dashboard/format'
-import { POST_CATEGORIES, postCategoryLabel, type PublishStatus } from '@/lib/supabase/types'
+import { POST_CATEGORIES, postCategoryLabel, PRESENTATION_VISIBILITIES, type PublishStatus } from '@/lib/supabase/types'
 
 import { PageTitle, useAction } from './ui'
 
@@ -16,6 +16,8 @@ export interface DocumentSummary {
   id: string
   slug: string
   title: string
+  /** Where it shows on the site, when that isn't just its slug: a page under another, or one of the site's own */
+  href?: string
   status: PublishStatus
   updated_at: string
   published_at?: string | null
@@ -28,11 +30,23 @@ export interface DocumentSummary {
   featured?: boolean
   review_requested?: boolean
   review_note?: string | null
+  /** A presentation's slides, counted */
+  slideCount?: number
+  /** A presentation: who can open it once it's published */
+  visibility?: string
 }
 
 const COPY = {
   post: { title: 'Posts', description: 'News and announcements, listed at /posts on the site.', base: '/posts', list: '/dashboard/posts', create: 'Write a post', icon: <Newspaper /> },
   page: { title: 'Pages', description: 'Standalone pages on the site, each at its own address (/guide): a constitution, an FAQ, a sign-up guide. A page can sit under another, and be listed in the menu.', base: '', list: '/dashboard/pages', create: 'Create a page', icon: <FileText /> },
+  presentation: {
+    title: 'Presentations',
+    description: 'Slide decks for meetings, workshops, and tabling, each played at its own address (/presentations/welcome-week) and listed at /presentations.',
+    base: '/presentations',
+    list: '/dashboard/presentations',
+    create: 'Create a presentation',
+    icon: <Presentation />,
+  },
 } as const
 
 type DocumentState = 'draft' | 'review' | 'live' | 'scheduled' | 'ended'
@@ -55,12 +69,13 @@ const stateOf = (d: DocumentSummary): DocumentState => {
 
 const person = (email: string | null | undefined) => email?.split('@')[0]
 
-const searchable = (d: DocumentSummary) => [d.title, d.slug]
+const searchable = (d: DocumentSummary) => [d.title, d.slug, d.href]
 
 const FILTERS: SortFilterField<DocumentSummary>[] = [
   { id: 'state', label: 'Status', value: stateOf, options: (Object.keys(STATES) as DocumentState[]).map((s) => ({ value: s, label: STATES[s].word })) },
   { id: 'by', label: 'Who', value: (d) => person(d.by) },
 ]
+const DECK_FILTERS: SortFilterField<DocumentSummary>[] = [...FILTERS, { id: 'visibility', label: 'Who sees it', value: (d) => d.visibility, options: PRESENTATION_VISIBILITIES.map(({ value, label }) => ({ value, label })) }]
 const POST_FILTERS: SortFilterField<DocumentSummary>[] = [...FILTERS, { id: 'category', label: 'Category', value: (d) => d.category, options: POST_CATEGORIES }]
 
 const SORTS: SortOption<DocumentSummary>[] = [
@@ -71,11 +86,11 @@ const SORTS: SortOption<DocumentSummary>[] = [
 ]
 
 /** Posts or pages, told apart by where they stand, to sort and narrow down */
-export const DocumentList: FC<{ kind: 'post' | 'page'; docs: DocumentSummary[] }> = ({ kind, docs }) => {
+export const DocumentList: FC<{ kind: 'post' | 'page' | 'presentation'; docs: DocumentSummary[] }> = ({ kind, docs }) => {
   const c = COPY[kind]
   const router = useRouter()
   const { run } = useAction()
-  const list = useSortFilter({ rows: docs, filters: kind === 'post' ? POST_FILTERS : FILTERS, sorts: SORTS, search: searchable, syncUrl: true })
+  const list = useSortFilter({ rows: docs, filters: kind === 'post' ? POST_FILTERS : kind === 'presentation' ? DECK_FILTERS : FILTERS, sorts: SORTS, search: searchable, syncUrl: true })
   return (
     <>
       <PageTitle
@@ -127,7 +142,7 @@ export const DocumentList: FC<{ kind: 'post' | 'page'; docs: DocumentSummary[] }
                     </Link>
                   </span>
                   <span className="truncate text-[0.8rem] font-normal text-muted">
-                    {c.base}/{d.slug}
+                    {d.href ?? `${c.base}/${d.slug}`}
                   </span>
                 </span>
               ),
@@ -144,21 +159,28 @@ export const DocumentList: FC<{ kind: 'post' | 'page'; docs: DocumentSummary[] }
                     <Badge size="sm" dot tone={STATES[state].tone}>
                       {state === 'scheduled' ? `Scheduled for ${formatDate(d.publish_at, true)}` : STATES[state].word}
                     </Badge>
+                    {d.visibility && d.visibility !== 'public' ? (
+                      <Badge size="sm" tone="neutral">
+                        {d.visibility === 'private' ? 'Private: officers only' : 'Unlisted: link only'}
+                      </Badge>
+                    ) : null}
                   </span>
                 )
               },
             },
             ...(kind === 'post' ? [{ key: 'category', header: 'Category', hideWhenStacked: true, groupable: true, groupValue: (d: DocumentSummary) => postCategoryLabel(d.category), cell: (d: DocumentSummary) => postCategoryLabel(d.category) ?? '—' }] : []),
+            ...(kind === 'presentation' ? [{ key: 'slides', header: 'Slides', hideWhenStacked: true, cell: (d: DocumentSummary) => d.slideCount ?? 0 }] : []),
             { key: 'updated_at', header: 'Updated', cell: (d) => formatDate(d.updated_at) },
-            { key: 'by', header: kind === 'post' ? 'Author' : 'Changed by', hideWhenStacked: true, groupable: true, groupValue: (d) => person(d.by), cell: (d) => person(d.by) ?? '—' },
+            { key: 'by', header: kind === 'page' ? 'Changed by' : 'Author', hideWhenStacked: true, groupable: true, groupValue: (d) => person(d.by), cell: (d) => person(d.by) ?? '—' },
           ]}
           rowActions={(d) => (
             <ActionMenu
               label={`Actions for ${d.title}`}
               items={[
                 { label: 'Edit', icon: <Pencil />, href: `${c.list}/${d.id}` },
+                ...(kind === 'presentation' ? [{ label: 'Present', icon: <Play />, href: `${c.list}/${d.id}/present` }] : []),
                 { label: 'Duplicate', icon: <Copy />, onSelect: () => run(() => duplicateDocument(kind, d.id), (result) => router.push(`${c.list}/${result.id}`)) },
-                ...(stateOf(d) === 'live' ? [{ label: 'View on the site', icon: <ExternalLink />, href: `${c.base}/${d.slug}` }] : []),
+                ...(stateOf(d) === 'live' && d.visibility !== 'private' ? [{ label: 'View on the site', icon: <ExternalLink />, href: d.href ?? `${c.base}/${d.slug}` }] : []),
               ]}
             />
           )}

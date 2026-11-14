@@ -90,7 +90,7 @@ describe('the menu, with officers’ pages', () => {
 
   it('is the site’s own when there are none', () => {
     expect(navWithPages(NAV_LINKS, [])).toBe(NAV_LINKS)
-    expect(footerWithPages([]).map((s) => s.title)).toEqual(['Explore', 'Get involved'])
+    expect(footerWithPages([]).map((s) => s.title)).toEqual(['About', 'Campus', 'Resources', 'Get involved', 'Officers'])
   })
 
   it('gives one page its own item, and several a More menu', () => {

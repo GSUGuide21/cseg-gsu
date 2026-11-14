@@ -9,6 +9,8 @@ const form = (fields: Record<string, string>) => {
 // What Supabase holds and answers, set by each test
 let existing: Record<string, unknown> | null
 let takenSlugs: string[]
+// One answer per single-row read, in order, for a test that needs them to differ
+let answers: (Record<string, unknown> | null)[] | null
 const written: { table: string; op: 'insert' | 'update'; values: Record<string, unknown> }[] = []
 
 const query = (table: string) => {
@@ -18,8 +20,10 @@ const query = (table: string) => {
       return chain
     },
     eq: () => chain,
+    order: () => chain,
+    limit: () => chain,
     single: async () => ({ data: { id: 'new-id' }, error: null }),
-    maybeSingle: async () => ({ data: existing, error: null }),
+    maybeSingle: async () => ({ data: answers ? (answers.shift() ?? null) : existing, error: null }),
     insert: (values: Record<string, unknown>) => {
       written.push({ table, op: 'insert', values })
       return chain
@@ -50,6 +54,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   written.length = 0
   existing = null
+  answers = null
   takenSlugs = []
 })
 
@@ -84,6 +89,32 @@ describe('Saving a post', () => {
   it('saves category and pinning', async () => {
     await savePost(null, form({ status: 'draft', category: 'recaps', featured: 'on' }))
     expect(saved()).toMatchObject({ category: 'recaps', featured: true })
+  })
+})
+
+describe('Saving over someone else', () => {
+  const opened = '2026-11-14T15:00:00.000000+00:00'
+
+  it('hands back the new save time, for the next save to be checked against', async () => {
+    existing = { id: 'p1', updated_at: '2026-11-14T16:00:00.000000+00:00' }
+    expect(await savePost('p1', form({ status: 'draft', loaded_at: opened }))).toMatchObject({ ok: true, updatedAt: '2026-11-14T16:00:00.000000+00:00' })
+  })
+
+  it('doesn’t save a post that was saved again since it was opened, and says who by', async () => {
+    // No row matches the time it was opened; the newest save in its history says who got there first
+    answers = [null, { saved_at: '2026-11-14T15:30:00Z', saved_by: 'sam@gsu.edu' }]
+    const result = await savePost('p1', form({ status: 'draft', loaded_at: opened }))
+    expect(written.filter((w) => w.op === 'update')).toHaveLength(1)
+    expect(result).toMatchObject({ ok: false, conflict: { name: 'sam', at: '2026-11-14T15:30:00Z' } })
+  })
+
+  it('saves anyway when the editor doesn’t say which version it has', async () => {
+    expect(await savePost('p1', form({ status: 'draft' }))).toMatchObject({ ok: true, id: 'new-id' })
+  })
+
+  it('notes who changed a page', async () => {
+    await savePage('pg1', form({ status: 'draft' }))
+    expect(saved().updated_by).toBe('pres@gsu.edu')
   })
 })
 

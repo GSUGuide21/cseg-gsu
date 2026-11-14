@@ -1,6 +1,6 @@
-import { CalendarDays, ChevronRight, CircleCheck, History, Newspaper, Repeat, TriangleAlert, UserCheck, UserPlus, Users } from 'lucide-react'
+import { CalendarDays, CalendarPlus, ChevronRight, CircleCheck, FileText, History, Images, Inbox, LayoutTemplate, Menu, Newspaper, Repeat, TriangleAlert, UserCheck, UserPlus, Users, Utensils } from 'lucide-react'
 import Link from 'next/link'
-import type { FC } from 'react'
+import type { FC, ReactNode } from 'react'
 
 import { BarChart, Button, EmptyState, LineChart, Stat, StatGroup, Timeline, type TimelineItem } from '@/components'
 import { cn } from '@/lib/cn'
@@ -10,6 +10,7 @@ import { engagement, LAPSED_DAYS, needsAttention, type AttentionItem, type Engag
 import { getOverview } from '@/lib/dashboard/queries'
 import { atlantaToday } from '@/lib/eateries'
 import type { ClubEvent } from '@/lib/data/events'
+import type { OfficerRole } from '@/lib/supabase/types'
 
 import { DateChip, Panel } from './ui'
 
@@ -35,25 +36,6 @@ const Hero: FC<{ name: string; next?: ClubEvent; now: number }> = ({ name, next,
           Good {partOfDay(new Date(now))}, {name}
         </h1>
         <p className="m-0 max-w-xl text-[0.95rem]">How the club is doing, what’s coming up, and what officers changed lately.</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            href="/dashboard/posts/new"
-            size="sm"
-            leading={<Newspaper size={15} aria-hidden />}
-            className="bg-white text-brand-solid hover:bg-white/90 focus-visible:outline-white"
-          >
-            Write a post
-          </Button>
-          <Button
-            href="/dashboard/members?add=1"
-            size="sm"
-            variant="outline"
-            leading={<UserPlus size={15} aria-hidden />}
-            className="border-white/60 text-white hover:border-white hover:bg-white/15 focus-visible:outline-white"
-          >
-            Add member
-          </Button>
-        </div>
       </div>
       {next ? (
         <Link
@@ -69,6 +51,52 @@ const Hero: FC<{ name: string; next?: ClubEvent; now: number }> = ({ name, next,
         </Link>
       ) : null}
     </div>
+  </section>
+)
+
+type Task = { title: string; hint: string; href: string; icon: ReactNode; /** About people, which an editor doesn't get */ staff?: boolean }
+
+/** The everyday jobs, in the words an officer would use, each going straight to where it's done */
+const TASKS: Task[] = [
+  { title: 'Post an announcement', hint: 'Write a post for the site’s news.', href: '/dashboard/posts/new', icon: <Newspaper /> },
+  { title: 'Add or change an event', hint: 'The events list, and checking people in.', href: '/dashboard/events', icon: <CalendarPlus /> },
+  { title: 'Answer messages', hint: 'What people sent from the Contact page.', href: '/dashboard/messages', icon: <Inbox />, staff: true },
+  { title: 'Add a member', hint: 'Someone who joined in person.', href: '/dashboard/members?add=1', icon: <UserPlus />, staff: true },
+  { title: 'Update the homepage', hint: 'Its words, and which sections show.', href: '/dashboard/homepage', icon: <LayoutTemplate /> },
+  { title: 'Change the menu', hint: 'The links across the top of the site.', href: '/dashboard/site/navigation', icon: <Menu /> },
+  { title: 'Write or edit a page', hint: 'About, Join, guides, and your own.', href: '/dashboard/pages', icon: <FileText /> },
+  { title: 'Upload a photo or file', hint: 'To use in posts and pages.', href: '/dashboard/media', icon: <Images /> },
+  { title: 'Update eatery hours', hint: 'Places to eat, and closures.', href: '/dashboard/eateries', icon: <Utensils /> },
+]
+
+/** Where to start: the common jobs by name, so nobody has to know which screen holds what */
+const QuickTasks: FC<{ role: OfficerRole }> = ({ role }) => (
+  <section aria-labelledby="quick-tasks-title" className="flex flex-col gap-3">
+    <div className="flex flex-col gap-0.5">
+      <h2 id="quick-tasks-title" className="m-0 text-[1.1rem] font-bold text-ink">
+        What do you want to do?
+      </h2>
+      <p className="m-0 text-[0.85rem] text-muted">Everything else is in the menu at the side, or press ⌘K (Ctrl+K) to search for a screen.</p>
+    </div>
+    <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+      {TASKS.filter((t) => !t.staff || role !== 'editor').map((t) => (
+        <li key={t.href}>
+          <Link
+            href={t.href}
+            className="group flex h-full items-center gap-3.5 rounded-xl border border-line bg-surface p-4 text-ink no-underline shadow-card transition-colors hover:border-brand/50 hover:bg-brand-wash focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand-tint text-brand [&>svg]:size-5">
+              {t.icon}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="font-bold">{t.title}</span>
+              <span className="text-[0.85rem] text-muted">{t.hint}</span>
+            </span>
+            <ChevronRight aria-hidden size={16} className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </li>
+      ))}
+    </ul>
   </section>
 )
 
@@ -201,6 +229,8 @@ export default async function OverviewPage() {
   return (
     <div className="flex flex-col gap-6">
       <Hero name={(officer.name ?? officer.email).split(' ')[0]} next={upcoming[0]} now={now} />
+
+      <QuickTasks role={officer.role} />
 
       <StatGroup>
         <Stat label="Members" value={members.length} icon={<Users />} description={`${newThisMonth} joined this month`} href="/dashboard/members" className={ENTER[0]} />

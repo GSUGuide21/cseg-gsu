@@ -13,7 +13,24 @@ import {
   Bookmark,
   ChevronDown,
   ChevronUp,
+  AppWindow,
+  MessageSquarePlus,
+  ArrowDownAZ,
+  ArrowDownZA,
+  Columns3Cog,
+  PanelLeft,
+  Rows3,
+  Combine,
+  Keyboard,
+  Maximize2,
+  Minimize2,
+  Search,
+  SplitSquareHorizontal,
   Clapperboard,
+  Columns2,
+  Columns3,
+  Images,
+  Paperclip,
   ClipboardPaste,
   ClipboardType,
   Clock,
@@ -58,18 +75,21 @@ import {
 import { Children, createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type FC, type KeyboardEvent, type ReactElement, type ReactNode, type RefObject } from 'react'
 
 import { cn } from '@/lib/cn'
-import { CALLOUT_TONE_LIST, CALLOUT_TONES } from '@/lib/richtext/blocks'
+import { CALLOUT_TONE_LIST, CALLOUT_TONES, COLUMN_LAYOUT_LIST, COLUMN_LAYOUTS, LINE_HEIGHT_LIST, LINE_HEIGHTS } from '@/lib/richtext/blocks'
 
+import { ActionMenu } from '../../ActionMenu'
 import { Popover } from '../../Popover'
 import { Tooltip } from '../../Tooltip'
 import { BorderTool, ColorTool, INK_SWATCHES, TINT_SWATCHES, UnderlineTool } from './ColorTool'
 import { ToolCombobox } from './Combobox'
-import { $clearFormatting, $toggleHeaderRow, TABLE_ACTIONS } from './commands'
+import { $clearFormatting, $toggleHeaderColumn, $toggleHeaderRow, $toggleRowStriping, TABLE_ACTIONS } from './commands'
 import { CalloutIcon, useBlockDialogs } from './nodes'
-import { ALIGNMENTS, BORDER_START, FORMATS, LinkTool, TableInsert, ToolButton, bigTool, useClipboard, useEditorTools, useRovingFocus } from './tools'
+import { ALIGNMENTS, BORDER_START, FORMATS, LinkTool, MenuButton, TableInsert, ToolButton, bigTool, useClipboard, useEditorTools, useRovingFocus } from './tools'
+import { SymbolTool } from './Symbols'
 import type { BlockType, FontOption } from './types'
+import { useEditorUI } from './ui'
 
-type RibbonTab = 'home' | 'insert' | 'format' | 'table' | 'callout' | 'faq'
+type RibbonTab = 'home' | 'insert' | 'format' | 'table' | 'callout' | 'faq' | 'columns'
 
 /** A big ribbon button: icon over its label. Mousedown doesn't take focus, so the selection stays put. */
 const BigButton: FC<{ label: string; icon: ReactNode; pressed?: boolean; disabled?: boolean; onClick: () => void; hint?: string }> = ({ label, icon, pressed, disabled, onClick, hint }) => {
@@ -211,6 +231,7 @@ const STYLES: { type: BlockType; label: string; preview: string }[] = [
  */
 export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolean }> = ({ fonts, sizes, disabled }) => {
   const t = useEditorTools({ fonts, sizes, disabled })
+  const ui = useEditorUI()
   const { editor, state, off, noText } = t
   const clipboard = useClipboard()
   const blocks = useBlockDialogs()
@@ -223,7 +244,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
   const id = useId()
 
   // The Table and Callout tabs go when the cursor leaves the table or callout
-  const shown: RibbonTab = (tab === 'table' && !state.inTable) || (tab === 'callout' && !state.callout) || (tab === 'faq' && !state.faq) ? 'home' : tab
+  const shown: RibbonTab = (tab === 'table' && !state.inTable) || (tab === 'callout' && !state.callout) || (tab === 'faq' && !state.faq) || (tab === 'columns' && !state.columns) ? 'home' : tab
   const tabs: { id: RibbonTab; label: string; contextual?: string }[] = [
     { id: 'home', label: 'Home' },
     { id: 'insert', label: 'Insert' },
@@ -231,6 +252,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
     ...(state.inTable ? [{ id: 'table' as const, label: 'Table', contextual: 'the table' }] : []),
     ...(state.callout ? [{ id: 'callout' as const, label: 'Callout', contextual: 'the callout' }] : []),
     ...(state.faq ? [{ id: 'faq' as const, label: 'FAQ', contextual: 'the FAQ' }] : []),
+    ...(state.columns ? [{ id: 'columns' as const, label: 'Columns', contextual: 'the columns' }] : []),
   ]
 
   // A peeked panel closes once focus leaves the ribbon (a tool sends it back to the text)
@@ -326,6 +348,7 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
               </ToolButton>
             ))}
             <LinkTool current={state.link} disabled={noText} onLink={t.setLink} />
+            <SymbolTool disabled={noText} />
             <ToolButton label="Clear formatting" disabled={noText} onClick={() => t.change($clearFormatting)}>
               <RemoveFormatting />
             </ToolButton>
@@ -336,6 +359,15 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
           <BigButton label="Numbers" icon={<ListOrdered />} pressed={state.block === 'number'} disabled={off} onClick={() => block('number')} />
           <BigButton label="Checklist" icon={<ListChecks />} pressed={state.block === 'check'} disabled={off} onClick={() => block('check')} />
           <BigButton label="Quote" icon={<Quote />} pressed={state.block === 'quote'} disabled={off} onClick={() => block('quote')} />
+          <ActionMenu
+            label="Line spacing"
+            align="start"
+            trigger={<MenuButton label={`Line spacing: ${state.lineHeight ? LINE_HEIGHTS[state.lineHeight] : 'usual'}`} display={<span className="text-[0.78rem] font-semibold">Spacing</span>} disabled={off || state.inCode} />}
+            items={[
+              { label: 'Usual', description: state.lineHeight === '' ? 'Current' : 'The site’s own, roomy for reading', onSelect: () => t.setLineHeight('') },
+              ...LINE_HEIGHT_LIST.map((v) => ({ label: LINE_HEIGHTS[v], description: v === state.lineHeight ? 'Current' : undefined, onSelect: () => t.setLineHeight(v) })),
+            ]}
+          />
         </Group>
         <Group label="Styles" wraps>
           {STYLES.map((s) => (
@@ -375,6 +407,21 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
           <BigButton label="Image" icon={<ImageIcon />} disabled={off || state.inCode} onClick={blocks.openImage} hint="Upload one, or use its address" />
           <BigButton label="Buttons" icon={<RectangleHorizontal />} disabled={off || state.inCode} onClick={blocks.openButtons} hint="Links styled as buttons, for the next step" />
           <BigButton label="Video" icon={<Clapperboard />} disabled={off || state.inCode} onClick={() => blocks.open('video')} hint="From a YouTube or Vimeo link" />
+          <BigButton label="Gallery" icon={<Images />} disabled={off || state.inCode} onClick={() => blocks.open('gallery')} hint="Several photos together, each opening larger" />
+          <BigButton label="File" icon={<Paperclip />} disabled={off || state.inCode} onClick={() => blocks.open('file')} hint="A card linking to a file to open or download" />
+          <BigButton label="Embed" icon={<AppWindow />} disabled={off || state.inCode} onClick={() => blocks.open('embed')} hint="A Google Form, map, calendar, playlist, or post, shown in the page" />
+        </Group>
+        <Group label="Columns" wraps>
+          {COLUMN_LAYOUT_LIST.map((layout) => (
+            <BigButton
+              key={layout}
+              label={COLUMN_LAYOUTS[layout].label}
+              icon={COLUMN_LAYOUTS[layout].count === 3 ? <Columns3 /> : <Columns2 />}
+              disabled={off || state.inCode || state.inTable || !!state.faq || !!state.columns}
+              onClick={() => blocks.insertColumns(layout)}
+              hint={`Writing side by side: ${COLUMN_LAYOUTS[layout].hint.toLowerCase()}`}
+            />
+          ))}
         </Group>
         <Group label="Layout" wraps>
           <BigButton label="FAQ" icon={<MessageCircleQuestion />} disabled={off || state.inCode || !!state.faq} onClick={blocks.insertFaq} hint="Questions that open to their answers, typed in place" />
@@ -453,8 +500,22 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
           <LabeledButton label="Insert left" icon={<ArrowLeftToLine />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[2].$run)} />
           <LabeledButton label="Insert right" icon={<ArrowRightToLine />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[3].$run)} />
         </Group>
+        <Group label="Cells" className="flex-col items-start gap-0.5">
+          <LabeledButton label="Merge cells" icon={<Combine />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[4].$run)} />
+          <LabeledButton label="Split cell" icon={<SplitSquareHorizontal />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[5].$run)} />
+          <ColorTool labeled label="Cell color" icon={<PaintBucket />} current={state.cellBackground} swatches={TINT_SWATCHES} alpha start="#facc1559" disabled={off} onPick={(c, live) => t.setCellBackground(c, !live)} />
+        </Group>
         <Group label="Headers">
           <BigButton label="Header row" icon={<PanelTop />} pressed={state.headerRow} disabled={off} onClick={() => t.table($toggleHeaderRow)} hint="The first row as column headings" />
+          <BigButton label="Header column" icon={<PanelLeft />} pressed={state.headerColumn} disabled={off} onClick={() => t.table($toggleHeaderColumn)} hint="The first column as row headings" />
+        </Group>
+        <Group label="Look" className="flex-col items-start gap-0.5">
+          <LabeledButton label={state.striped ? 'No stripes' : 'Striped rows'} icon={<Rows3 />} disabled={off} onClick={() => t.table($toggleRowStriping)} />
+          <LabeledButton label="Even columns" icon={<Columns3Cog />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[8].$run)} />
+        </Group>
+        <Group label="Sort" className="flex-col items-start gap-0.5">
+          <LabeledButton label="A to Z" icon={<ArrowDownAZ />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[6].$run)} />
+          <LabeledButton label="Z to A" icon={<ArrowDownZA />} disabled={off} onClick={() => t.table(TABLE_ACTIONS[7].$run)} />
         </Group>
         <Group label="Delete" className="flex-col items-start gap-0.5">
           {TABLE_ACTIONS.filter((a) => a.danger).map((a) => (
@@ -472,6 +533,26 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
         </Group>
         <Group label="Undo it">
           <BigButton label="Paragraph" icon={<Pilcrow />} disabled={off} onClick={() => block('callout')} hint="Turn the callout back into plain text" />
+        </Group>
+      </>
+    ),
+    columns: (
+      <>
+        <Group label="Layout" wraps>
+          {COLUMN_LAYOUT_LIST.map((layout) => (
+            <BigButton
+              key={layout}
+              label={COLUMN_LAYOUTS[layout].label}
+              icon={COLUMN_LAYOUTS[layout].count === 3 ? <Columns3 /> : <Columns2 />}
+              pressed={state.columns === layout}
+              disabled={off}
+              onClick={() => t.columns(layout)}
+              hint={COLUMN_LAYOUTS[layout].hint}
+            />
+          ))}
+        </Group>
+        <Group label="Undo it">
+          <BigButton label="Remove columns" icon={<Pilcrow />} disabled={off} onClick={() => t.columns('remove')} hint="Put their writing back in the page, one after another" />
         </Group>
       </>
     ),
@@ -523,8 +604,22 @@ export const Ribbon: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolea
             )
           })}
         </div>
-        {/* Undo and redo, always in reach */}
+        {/* Undo and redo, always in reach, with the editor's own views */}
         <div role="toolbar" aria-label="History" className="flex items-center gap-0.5">
+          {ui.commenting ? (
+            <ToolButton label={state.textSelected ? 'Comment on the selected words' : 'Comment (select some words first)'} disabled={off || !state.textSelected} onClick={ui.startComment}>
+              <MessageSquarePlus />
+            </ToolButton>
+          ) : null}
+          <ToolButton label={`Find and replace (${t.mod}F)`} disabled={off} onClick={ui.openFind}>
+            <Search />
+          </ToolButton>
+          <ToolButton label={ui.fullscreen ? 'Leave full screen (Esc)' : 'Full screen'} pressed={ui.fullscreen} disabled={off} onClick={ui.toggleFullscreen}>
+            {ui.fullscreen ? <Minimize2 /> : <Maximize2 />}
+          </ToolButton>
+          <ToolButton label={`Keyboard shortcuts (${t.mod}/)`} onClick={ui.openShortcuts}>
+            <Keyboard />
+          </ToolButton>
           <ToolButton label={`Undo (${t.mod}Z)`} disabled={off || !t.canUndo} onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}>
             <Undo2 />
           </ToolButton>

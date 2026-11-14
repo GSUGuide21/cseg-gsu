@@ -7,7 +7,16 @@ import {
   AtSign,
   Baseline,
   Bookmark,
+  AppWindow,
+  MessageSquarePlus,
+  Keyboard,
+  Maximize2,
+  Minimize2,
+  Search,
   Clapperboard,
+  Columns2,
+  Images,
+  Paperclip,
   Clock,
   AlignLeft,
   Footprints,
@@ -37,7 +46,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type FC, type ReactNode } from 'react'
 
-import { CALLOUT_TONE_LIST, CALLOUT_TONES } from '@/lib/richtext/blocks'
+import { CALLOUT_TONE_LIST, CALLOUT_TONES, COLUMN_LAYOUT_LIST, COLUMN_LAYOUTS, LINE_HEIGHT_LIST, LINE_HEIGHTS } from '@/lib/richtext/blocks'
 
 import { ActionMenu } from '../../ActionMenu'
 import { Popover } from '../../Popover'
@@ -46,7 +55,9 @@ import { ToolCombobox } from './Combobox'
 import { TABLE_ACTIONS } from './commands'
 import { CalloutIcon, useBlockDialogs } from './nodes'
 import { ALIGNMENTS, BLOCKS, BORDER_START, Divider, FORMATS, LinkTool, MenuButton, TableInsert, ToolButton, isApple, useEditorTools, useRovingFocus } from './tools'
+import { SymbolTool } from './Symbols'
 import type { FontOption } from './types'
+import { useEditorUI } from './ui'
 
 interface ToolGroup {
   key: string
@@ -101,7 +112,8 @@ const Overflow: FC<{ groups: ToolGroup[] }> = ({ groups }) => {
  * button, and come back as the editor gets wider.
  */
 export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boolean }> = ({ fonts, sizes, disabled }) => {
-  const { setLink, editor, state, canUndo, canRedo, mod, setBlock, setAlign, indent, setCalloutTone, faq, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText } = useEditorTools({ fonts, sizes, disabled })
+  const ui = useEditorUI()
+  const { setLink, editor, state, canUndo, canRedo, mod, setBlock, setAlign, indent, setCalloutTone, faq, columns, setLineHeight, setCellBackground, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText } = useEditorTools({ fonts, sizes, disabled })
   const blocks = useBlockDialogs()
   const barRef = useRef<HTMLDivElement>(null)
   const onKeyDown = useRovingFocus(barRef)
@@ -154,6 +166,22 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
                 'separator',
                 { label: 'Remove this question', danger: true, onSelect: () => faq('remove') },
                 { label: 'Delete FAQ', danger: true, onSelect: () => faq('delete') },
+              ]}
+            />
+          ) : null}
+          {state.columns ? (
+            <ActionMenu
+              label="Columns"
+              align="start"
+              trigger={<MenuButton label="Columns tools" display="Columns" disabled={off} />}
+              items={[
+                ...COLUMN_LAYOUT_LIST.map((layout) => ({
+                  label: COLUMN_LAYOUTS[layout].label,
+                  description: layout === state.columns ? 'Current' : COLUMN_LAYOUTS[layout].hint,
+                  onSelect: () => columns(layout),
+                })),
+                'separator' as const,
+                { label: 'Remove the columns', description: 'Their writing stays, one after another', danger: true, onSelect: () => columns('remove') },
               ]}
             />
           ) : null}
@@ -220,6 +248,7 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
             </ToolButton>
           ))}
           <LinkTool current={state.link} disabled={noText} onLink={setLink} />
+          <SymbolTool disabled={noText} />
         </>
       ),
     },
@@ -235,6 +264,14 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
             'separator' as const,
             { label: 'Indent less', icon: <IndentDecrease />, onSelect: () => indent(-1) },
             { label: 'Indent more', icon: <IndentIncrease />, onSelect: () => indent(1) },
+            'separator' as const,
+            {
+              label: 'Line spacing',
+              items: [
+                { label: 'Usual', description: state.lineHeight === '' ? 'Current' : undefined, onSelect: () => setLineHeight('') },
+                ...LINE_HEIGHT_LIST.map((v) => ({ label: LINE_HEIGHTS[v], description: v === state.lineHeight ? 'Current' : undefined, onSelect: () => setLineHeight(v) })),
+              ],
+            },
           ]}
         />
       ),
@@ -271,7 +308,15 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
               { label: 'Image', icon: <ImageIcon />, onSelect: blocks.openImage },
               { label: 'Buttons', icon: <RectangleHorizontal />, onSelect: blocks.openButtons },
               { label: 'Video', icon: <Clapperboard />, onSelect: () => blocks.open('video') },
+              { label: 'Photo gallery', icon: <Images />, onSelect: () => blocks.open('gallery') },
+              { label: 'File', icon: <Paperclip />, onSelect: () => blocks.open('file') },
+              { label: 'Embed', icon: <AppWindow />, onSelect: () => blocks.open('embed') },
               'separator',
+              {
+                label: 'Columns',
+                icon: <Columns2 />,
+                items: COLUMN_LAYOUT_LIST.map((layout) => ({ label: COLUMN_LAYOUTS[layout].label, description: COLUMN_LAYOUTS[layout].hint, disabled: !!state.columns || state.inTable || !!state.faq, onSelect: () => blocks.insertColumns(layout) })),
+              },
               { label: 'FAQ', icon: <MessageCircleQuestion />, disabled: !!state.faq, onSelect: blocks.insertFaq },
               { label: 'Steps', icon: <Footprints />, onSelect: () => blocks.open('steps') },
               { label: 'Ranking', icon: <Trophy />, onSelect: () => blocks.open('ranking') },
@@ -313,8 +358,32 @@ export const Toolbar: FC<{ fonts: FontOption[]; sizes: number[]; disabled: boole
               ])}
             />
           ) : null}
+          {state.inTable ? (
+            <ColorTool label="Cell color" icon={<PaintBucket />} current={state.cellBackground} swatches={TINT_SWATCHES} alpha start="#facc1559" disabled={off} onPick={(c, live) => setCellBackground(c, !live)} />
+          ) : null}
           <ToolButton label="Insert a divider" disabled={off || state.inTable} onClick={() => (editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined), editor.focus())}>
             <SeparatorHorizontal />
+          </ToolButton>
+        </>
+      ),
+    },
+    {
+      key: 'view',
+      node: (
+        <>
+          {ui.commenting ? (
+            <ToolButton label={state.textSelected ? 'Comment on the selected words' : 'Comment (select some words first)'} disabled={off || !state.textSelected} onClick={ui.startComment}>
+              <MessageSquarePlus />
+            </ToolButton>
+          ) : null}
+          <ToolButton label={`Find and replace (${mod}F)`} disabled={off} onClick={ui.openFind}>
+            <Search />
+          </ToolButton>
+          <ToolButton label={ui.fullscreen ? 'Leave full screen (Esc)' : 'Full screen'} pressed={ui.fullscreen} disabled={off} onClick={ui.toggleFullscreen}>
+            {ui.fullscreen ? <Minimize2 /> : <Maximize2 />}
+          </ToolButton>
+          <ToolButton label={`Keyboard shortcuts (${mod}/)`} onClick={ui.openShortcuts}>
+            <Keyboard />
           </ToolButton>
         </>
       ),

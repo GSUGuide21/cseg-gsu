@@ -146,7 +146,7 @@ describe('Dashboard views', () => {
       parent_id: null,
       nav_placement: 'none',
       nav_label: null,
-      nav_sort: 0,
+      nav_sort: 0, header_menu: null,
       unpublish_at: null,
       title: 'Guide',
       description: 'A first-month guide.',
@@ -554,6 +554,13 @@ describe('Homepage settings', () => {
     })
     const form = actions.saveHomepage.mock.calls[0][0] as FormData
     expect(JSON.parse(form.get('content') as string).hero.title).toBe('Welcome, Panthers')
+  })
+
+  it('brings back the homepage as it was before the last save', () => {
+    wrap(<HomepageView row={{ ...row, content: { hero: { title: 'Oops' } }, previous_content: { hero: { title: 'Welcome back' } } }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Bring back the previous version' }))
+    expect(screen.getByLabelText('Title', { selector: 'input[value="Welcome back"]' })).toBeInTheDocument()
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
   })
 
   it('hides a section', () => {

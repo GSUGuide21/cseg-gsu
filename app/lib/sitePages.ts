@@ -28,6 +28,7 @@ export const isSitePage = (slug: string): slug is SitePageSlug => Object.hasOwn(
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   'pages',
   'posts',
+  'presentations',
   'search',
   'affiliates',
   'dashboard',

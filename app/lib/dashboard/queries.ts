@@ -1,9 +1,10 @@
+import { navigationFrom } from '@/lib/siteChrome'
 import { getUpcomingEvents, type ClubEvent } from '@/lib/data/events'
 import { atlantaToday } from '@/lib/eateries'
 import { BUILT_IN_EVENTS, eventFromRow, splitEvents } from '@/lib/events'
 import { SITE_PAGES } from '@/lib/sitePages'
 
-import type { PageRow, PostRow } from '@/lib/supabase/types'
+import type { PageRow, PostRow, PresentationRow } from '@/lib/supabase/types'
 
 import { attendanceByMember } from './attendance'
 import { requireOfficer, requireStaff } from './dal'
@@ -178,7 +179,22 @@ export async function getPost(id: string) {
 
 export async function listPages() {
   const { supabase } = await requireOfficer()
-  return must(await supabase.from('pages').select('id, slug, title, status, updated_at, updated_by, publish_at, unpublish_at, review_requested, review_note').order('title'))
+  const columns = 'id, slug, title, status, updated_at, updated_by, publish_at, unpublish_at, review_requested, review_note'
+  const { data, error } = await supabase.from('pages').select(`${columns}, parent_id`).order('title')
+  // Before the migration that adds parents has run: the pages, all at the top
+  if (error) return must(await supabase.from('pages').select(columns).order('title')).map((p) => ({ ...p, parent_id: null as string | null }))
+  return data
+}
+
+/** Every slide deck, newest change first; none before their migration has run */
+export async function listPresentations() {
+  const { supabase } = await requireOfficer()
+  return orEmpty(await supabase.from('presentations').select('id, slug, title, status, visibility, published_at, updated_at, author_email, slides').order('updated_at', { ascending: false }))
+}
+
+export async function getPresentation(id: string) {
+  const { supabase } = await requireOfficer()
+  return must<PresentationRow | null>(await supabase.from('presentations').select('*').eq('id', id).maybeSingle())
 }
 
 /** Every page's name and address, and the page it sits under, for the editor's "Sits under" */
@@ -232,6 +248,19 @@ export async function listResources() {
 export async function getHomepageRow() {
   const { supabase } = await requireOfficer()
   const { data, error } = await supabase.from('homepage').select('*').eq('id', 1).maybeSingle()
+  return error ? null : data
+}
+
+/** The site's menus by name, for a page to pick one; none before the site chrome migration runs */
+export async function listMenus(): Promise<{ id: string; name: string }[]> {
+  const row = await getSiteChromeRow()
+  return row ? navigationFrom(row.navigation).menus.map(({ id, name }) => ({ id, name })) : []
+}
+
+/** The menu, header, footer, and search row, or null before its migration runs */
+export async function getSiteChromeRow() {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('site_chrome').select('*').eq('id', 1).maybeSingle()
   return error ? null : data
 }
 

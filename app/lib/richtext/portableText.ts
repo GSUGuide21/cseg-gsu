@@ -95,6 +95,8 @@ export const toPortableText = (root: LexicalJSON): PortableTextContent => {
       }
       if (n.type === 'linebreak') return [span('\n', marks)]
       if (n.type === 'tab') return [span('\t', marks)]
+      // A comment's mark: comments stay with the site, so only the words go
+      if (n.type === 'mark') return inline(n.children ?? [], marks, markDefs)
       if (n.type === 'link' || n.type === 'autolink') {
         const def = { _type: 'link', _key: key(), href: n.url }
         markDefs.push(def)

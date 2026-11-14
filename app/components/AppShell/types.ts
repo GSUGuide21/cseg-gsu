@@ -13,6 +13,8 @@ export interface NavItem {
 export interface NavSection {
   /** A heading over the section's links */
   label?: string
+  /** A line under the heading saying what's in the section, while it's open */
+  description?: string
   items: NavItem[]
   /** Keeps these links at the bottom of the sidebar, always in view */
   pinned?: boolean

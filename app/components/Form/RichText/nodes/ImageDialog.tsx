@@ -5,14 +5,16 @@ import { ImageIcon, Upload } from 'lucide-react'
 import { useRef, useState, type FC } from 'react'
 
 import { cn } from '@/lib/cn'
-import { IMAGE_ALT_MAX, IMAGE_CAPTION_MAX, type ImageData } from '@/lib/richtext/blocks'
-import { safeSrc } from '@/lib/safeUrl'
+import { IMAGE_ALIGNS, IMAGE_ALT_MAX, IMAGE_CAPTION_MAX, IMAGE_SIZES, IMAGE_WIDTH, type ImageAlign, type ImageData, type ImageSize } from '@/lib/richtext/blocks'
+import { linkFromInput, safeSrc } from '@/lib/safeUrl'
 
 import { Button } from '../../../Button'
 import { Dialog } from '../../../Dialog'
 import { Portal } from '../../../Portal'
 import { Field } from '../../Field'
 import { Input } from '../../Input'
+import { Select } from '../../Select'
+import { Slider } from '../../Slider'
 import { uploadMessage, useRichTextOptions } from '../context'
 
 const ImageForm: FC<{ initial?: ImageData; inline?: boolean; onClose: () => void; onSave: (image: ImageData) => void }> = ({ initial, inline = false, onClose, onSave }) => {
@@ -21,6 +23,12 @@ const ImageForm: FC<{ initial?: ImageData; inline?: boolean; onClose: () => void
   const [src, setSrc] = useState(initial?.src ?? '')
   const [alt, setAlt] = useState(initial?.alt ?? '')
   const [caption, setCaption] = useState(initial?.caption ?? '')
+  const [size, setSize] = useState<ImageSize>(initial?.size ?? 'full')
+  // A width of its own (dragged in the editor, or set here); 0 keeps the size's
+  const [width, setWidth] = useState(initial?.width ?? 0)
+  const [align, setAlign] = useState<ImageAlign>(initial?.align ?? 'center')
+  const [href, setHref] = useState(initial?.href ?? '')
+  const [linkError, setLinkError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [broken, setBroken] = useState(false)
@@ -46,7 +54,10 @@ const ImageForm: FC<{ initial?: ImageData; inline?: boolean; onClose: () => void
   const save = () => {
     const ok = safeSrc(src)
     if (!ok) return setError(uploadImage ? 'Upload an image, or use an https:// image address.' : 'Use an https:// image address.')
-    onSave({ src: ok, alt: alt.trim(), caption: caption.trim() })
+    if (inline) return onSave({ src: ok, alt: alt.trim(), caption: caption.trim() })
+    const link = href.trim() ? linkFromInput(href) : ''
+    if (link === null) return setLinkError('Use a page here (/join), a full link (https://…), or leave it empty.')
+    onSave({ src: ok, alt: alt.trim(), caption: caption.trim(), size, align, href: link, width })
   }
 
   return (
@@ -150,9 +161,45 @@ const ImageForm: FC<{ initial?: ImageData; inline?: boolean; onClose: () => void
           <Input size="sm" value={alt} maxLength={IMAGE_ALT_MAX} onChange={(e) => setAlt(e.target.value)} placeholder="Officers at the spring welcome table" />
         </Field>
         {inline ? null : (
-          <Field label="Caption" description="Optional. Shown under the image.">
-            <Input size="sm" value={caption} maxLength={IMAGE_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} />
-          </Field>
+          <>
+            <Field label="Caption" description="Optional. Shown under the image.">
+              <Input size="sm" value={caption} maxLength={IMAGE_CAPTION_MAX} onChange={(e) => setCaption(e.target.value)} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Size">
+                <Select
+                  size="sm"
+                  value={width ? 'custom' : size}
+                  onValueChange={(v) => {
+                    if (v === 'custom') return setWidth((w) => w || 50)
+                    setWidth(0)
+                    setSize((v ?? 'full') as ImageSize)
+                  }}
+                  options={[...(Object.keys(IMAGE_SIZES) as ImageSize[]).map((value) => ({ value, label: IMAGE_SIZES[value].label })), { value: 'custom', label: 'Custom width' }]}
+                />
+              </Field>
+              <Field label="Where it sits" description={align === 'center' ? undefined : 'On the site, the writing after it wraps beside it (not on phones).'}>
+                <Select size="sm" value={align} onValueChange={(v) => setAlign((v ?? 'center') as ImageAlign)} options={(Object.keys(IMAGE_ALIGNS) as ImageAlign[]).map((value) => ({ value, label: IMAGE_ALIGNS[value].label }))} />
+              </Field>
+            </div>
+            {width ? (
+              <Field label="Width" description="Of the column, from tablet width up. You can also drag the image’s edge in the editor.">
+                <Slider min={IMAGE_WIDTH.min} max={IMAGE_WIDTH.max} step={IMAGE_WIDTH.step} value={width} onValueChange={setWidth} formatValue={(v) => `${v}%`} />
+              </Field>
+            ) : null}
+            <Field label="Link" description="Optional. Where a click on the image goes." error={linkError || undefined}>
+              <Input
+                size="sm"
+                inputMode="url"
+                value={href}
+                onChange={(e) => {
+                  setHref(e.target.value)
+                  setLinkError('')
+                }}
+                placeholder="/events or https://…"
+              />
+            </Field>
+          </>
         )}
         {/* Enter in a field saves, as the button does */}
         <button type="submit" hidden />

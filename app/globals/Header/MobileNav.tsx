@@ -1,23 +1,26 @@
 import Link from 'next/link'
 import type { FC } from 'react'
 
-import { NAV_LINKS, type NavItem } from '@/globals/config/nav'
+import type { NavItem } from '@/globals/config/nav'
+import type { HomeButton } from '@/lib/homepage'
 import { SocialIcons } from '@/globals/SocialIcons'
 import { button } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 
 /** Subnav links worth repeating on mobile: pages that aren't already top-level items. */
-const subLinksFor = (menu: NavItem['menu']) =>
-  (menu?.links ?? []).filter((l) => !NAV_LINKS.some((top) => top.href === l.href))
+const subLinksFor = (menu: NavItem['menu'], links: readonly NavItem[]) =>
+  (menu?.links ?? []).filter((l) => !links.some((top) => top.href === l.href))
 
 export type MobileNavProps = {
   open: boolean
   links: readonly NavItem[]
+  /** The button under the links; none without one */
+  cta?: HomeButton | null
   isActive: (href: string) => boolean
   onNavigate: () => void
 }
 
-export const MobileNav: FC<MobileNavProps> = ({ open, links, isActive, onNavigate }) => (
+export const MobileNav: FC<MobileNavProps> = ({ open, links, cta = { label: 'Join CSEG →', href: '/join' }, isActive, onNavigate }) => (
   <div
     id="mobile-menu"
     className={cn(
@@ -42,9 +45,9 @@ export const MobileNav: FC<MobileNavProps> = ({ open, links, isActive, onNavigat
           >
             {label}
           </Link>
-          {subLinksFor(menu).length > 0 ? (
+          {subLinksFor(menu, links).length > 0 ? (
             <ul className="-mt-1 flex flex-wrap gap-x-5 gap-y-1 pb-[0.85rem] pl-1">
-              {subLinksFor(menu).map((link) => (
+              {subLinksFor(menu, links).map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
@@ -61,13 +64,11 @@ export const MobileNav: FC<MobileNavProps> = ({ open, links, isActive, onNavigat
       ))}
     </ul>
     <div className="flex flex-col gap-4">
-      <Link
-        href="/join"
-        onClick={onNavigate}
-        className={button({ className: 'w-full px-4 py-[calc(0.9rem-2px)]' })}
-      >
-        Join CSEG &rarr;
-      </Link>
+      {cta ? (
+        <Link href={cta.href} onClick={onNavigate} className={button({ className: 'w-full px-4 py-[calc(0.9rem-2px)]' })}>
+          {cta.label}
+        </Link>
+      ) : null}
       <SocialIcons size="lg" />
     </div>
   </div>

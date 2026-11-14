@@ -14,7 +14,12 @@ import {
   CalendarClock,
   CalendarDays,
   ChartNoAxesColumn,
+  AppWindow,
   Clapperboard,
+  Columns2,
+  Columns3,
+  Images,
+  Paperclip,
   Clock,
   Footprints,
   ImageIcon,
@@ -35,6 +40,7 @@ import { useCallback, useMemo, useState, type FC, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/cn'
+import { COLUMN_LAYOUT_LIST, COLUMN_LAYOUTS } from '@/lib/richtext/blocks'
 
 import { $replacingEmptyLine } from './commands'
 import { $faqAtSelection, useBlockDialogs, type InsertableBlock } from './nodes'
@@ -59,7 +65,10 @@ const KEYWORDS: Record<string, string> = { h1: 'title', h2: 'subtitle', bullet: 
 const DIALOG_BLOCKS: { block: InsertableBlock; label: string; icon: ReactNode; hint: string; keywords?: string }[] = [
   { block: 'image', label: 'Image', icon: <ImageIcon />, hint: 'Upload one, or use its address', keywords: 'photo picture' },
   { block: 'buttons', label: 'Buttons', icon: <RectangleHorizontal />, hint: 'Links styled as buttons', keywords: 'cta' },
-  { block: 'video', label: 'Video', icon: <Clapperboard />, hint: 'From a YouTube or Vimeo link', keywords: 'embed' },
+  { block: 'video', label: 'Video', icon: <Clapperboard />, hint: 'From a YouTube or Vimeo link', keywords: 'youtube vimeo' },
+  { block: 'gallery', label: 'Photo gallery', icon: <Images />, hint: 'Several photos together', keywords: 'images pictures album' },
+  { block: 'file', label: 'File', icon: <Paperclip />, hint: 'A file to open or download', keywords: 'pdf attachment download flyer' },
+  { block: 'embed', label: 'Embed', icon: <AppWindow />, hint: 'A form, map, calendar, or post from another site', keywords: 'google form map calendar spotify instagram iframe' },
   { block: 'steps', label: 'Steps', icon: <Footprints />, hint: 'Numbered steps, side by side', keywords: 'how to' },
   { block: 'ranking', label: 'Ranking', icon: <Trophy />, hint: 'A numbered top list', keywords: 'best top' },
   { block: 'cards', label: 'Cards', icon: <LayoutGrid />, hint: 'One card, or a grid of them', keywords: 'grid' },
@@ -110,6 +119,7 @@ export const SlashMenu: FC = () => {
         '3 × 3, with a header row'
       ),
       new SlashOption('FAQ', <MessageCircleQuestion />, dialogs.insertFaq, 'Questions that open to their answers', 'questions'),
+      ...COLUMN_LAYOUT_LIST.map((layout) => new SlashOption(COLUMN_LAYOUTS[layout].label, COLUMN_LAYOUTS[layout].count === 3 ? <Columns3 /> : <Columns2 />, () => dialogs.insertColumns(layout), COLUMN_LAYOUTS[layout].hint, 'columns layout side by side')),
       ...DIALOG_BLOCKS.map((b) => new SlashOption(b.label, b.icon, () => dialogs.open(b.block), b.hint, b.keywords)),
     ],
     [editor, dialogs]

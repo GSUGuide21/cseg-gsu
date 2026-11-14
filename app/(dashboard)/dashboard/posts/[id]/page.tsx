@@ -8,7 +8,7 @@ import { getPost } from '@/lib/dashboard/queries'
 import { DocumentEditor } from '../../DocumentEditor'
 
 export default async function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireOfficer()
+  const { officer } = await requireOfficer()
   const { id } = await params
   // Not a uuid: no such post (and Postgres would reject the lookup anyway)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
@@ -16,8 +16,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
   if (!doc) notFound()
   return (
     <SiteContentProvider content={await getSiteContent()}>
-      {/* Keyed by the last save, so a restored version opens fresh */}
-      <DocumentEditor key={doc.updated_at} kind="post" doc={doc} />
+      <DocumentEditor me={{ name: officer.name ?? officer.email.split('@')[0], email: officer.email }} kind="post" doc={doc} />
     </SiteContentProvider>
   )
 }

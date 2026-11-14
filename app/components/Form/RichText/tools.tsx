@@ -77,6 +77,7 @@ import {
 
 import { cn } from '@/lib/cn'
 import type { CalloutTone } from '@/lib/richtext/blocks'
+import type { ColumnsLayout, LineHeight } from '@/lib/richtext/blocks'
 import { linkFromInput } from '@/lib/safeUrl'
 
 import { Button } from '../../Button'
@@ -84,8 +85,9 @@ import { Popover } from '../../Popover'
 import { Tooltip } from '../../Tooltip'
 import { NumberInput } from '../Number'
 import { Switch } from '../Switch'
-import { $hasHeaderRow, $replacingEmptyLine } from './commands'
-import { $addFaqItemAfter, $createCalloutNode, $faqAtSelection, $isCalloutNode, $removeFaq, $removeFaqItem } from './nodes'
+import { $hasHeaderRow, $replacingEmptyLine, $cellBackgroundAtSelection, $setCellBackground, $hasHeaderColumn, $hasRowStriping } from './commands'
+import { $lineHeightAtSelection, $setLineHeight } from './lineHeight'
+import { $addFaqItemAfter, $columnsAround, $createCalloutNode, $faqAtSelection, $isCalloutNode, $removeColumns, $removeFaq, $removeFaqItem, $setColumnsLayout } from './nodes'
 import type { BlockType, FontOption } from './types'
 
 export const BLOCKS: { type: BlockType; label: string; icon: ReactNode }[] = [
@@ -159,18 +161,30 @@ export interface ToolbarState {
   borderStyle: string
   borderWidth: string
   inTable: boolean
+  /** Whether words are selected (for a comment on them) */
+  textSelected: boolean
   /** Whether that table's first row is headers */
   headerRow: boolean
+  /** Whether its first column is headers */
+  headerColumn: boolean
+  /** Whether it shades every other row */
+  striped: boolean
   inCode: boolean
   /** The callout the cursor's in, by its tone (null for none) */
   callout: CalloutTone | null
   /** Whether the cursor's in an FAQ's question or answer (null for neither) */
   faq: 'question' | 'answer' | null
+  /** The row of columns the cursor's in, by its layout (null for none) */
+  columns: ColumnsLayout | null
   /** The link the cursor's in ("" for none) */
   link: string
+  /** The cursor's block's line spacing ("" for the usual) */
+  lineHeight: LineHeight | ''
+  /** The background of the table cell the cursor's in ("" for none) */
+  cellBackground: string
 }
 
-const EMPTY: ToolbarState = { block: 'paragraph', align: '', font: '', size: '', formats: new Set(), color: '', background: '', underlineColor: '', underlineStyle: '', borderColor: '', borderStyle: '', borderWidth: '', inTable: false, headerRow: false, inCode: false, callout: null, faq: null, link: '' }
+const EMPTY: ToolbarState = { block: 'paragraph', align: '', font: '', size: '', formats: new Set(), color: '', background: '', underlineColor: '', underlineStyle: '', borderColor: '', borderStyle: '', borderWidth: '', inTable: false, textSelected: false, headerRow: false, headerColumn: false, striped: false, inCode: false, callout: null, faq: null, columns: null, link: '', lineHeight: '', cellBackground: '' }
 
 /** Unsized text, in points: the page's 16px */
 const DEFAULT_POINTS = 12
@@ -434,13 +448,19 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
       borderStyle: $getSelectionStyleValueForProperty(selection, 'border-style', ''),
       borderWidth: $getSelectionStyleValueForProperty(selection, 'border-width', ''),
       inTable: $getTableCellNodeFromLexicalNode(anchor) !== null,
+      textSelected: !selection.isCollapsed(),
       headerRow: $hasHeaderRow(),
+      headerColumn: $hasHeaderColumn(),
+      striped: $hasRowStriping(),
       inCode: type === 'code',
       callout: $isCalloutNode(block) ? block.getTone() : null,
       faq: (() => {
         const at = $faqAtSelection()
         return at ? (at.inQuestion ? 'question' : 'answer') : null
       })(),
+      columns: $columnsAround(anchor)?.getLayout() ?? null,
+      lineHeight: $lineHeightAtSelection(),
+      cellBackground: $cellBackgroundAtSelection(),
       link: (() => {
         const link = $findMatchingParent(anchor, $isLinkNode)
         return link && $isLinkNode(link) ? link.getURL() : ''
@@ -563,7 +583,17 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
     if (next) style({ 'font-size': `${next}pt` })
   }
 
-  const table = (fn: () => void) => change(fn)
+  // Not through change, which needs a text cursor: merging works on cells selected across
+  const table = (fn: () => void, { focus = true } = {}) => {
+    editor.update(fn, focus ? undefined : { tag: SKIP_DOM_SELECTION_TAG })
+    if (focus) editor.focus()
+  }
+
+  /** The line spacing of the blocks the selection touches ("" for the usual) */
+  const setLineHeight = (value: LineHeight | '') => change(() => $setLineHeight(value))
+
+  /** The selected cells' background; while a color's still being chosen, without moving focus */
+  const setCellBackground = (color: string | null, focus = true) => table(() => $setCellBackground(color), { focus })
 
   /** A new table at the cursor: a header row only, as a header column too would make every row's first cell a heading */
   const insertTable = (rows: number, columns: number, headers: boolean) => {
@@ -611,6 +641,16 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
       else if (at.faq) $removeFaq(at.faq)
     })
 
+  /** The columns tools: another layout for the row the cursor's in, or its writing put back in the page */
+  const columns = (to: ColumnsLayout | 'remove') =>
+    change(() => {
+      const selection = $getSelection()
+      const row = $isRangeSelection(selection) ? $columnsAround(selection.anchor.getNode()) : null
+      if (!row) return
+      if (to === 'remove') $removeColumns(row)
+      else $setColumnsLayout(row, to)
+    })
+
   const off = disabled
   // Code blocks are plain text: no fonts or marks inside them
   const noText = off || state.inCode
@@ -621,7 +661,7 @@ export function useEditorTools({ fonts, sizes, disabled }: { fonts: FontOption[]
     editor.focus()
   }
 
-  return { setLink, editor, state, canUndo, canRedo, mod, change, setBlock, setAlign, indent, setCalloutTone, faq, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText }
+  return { setLink, editor, state, canUndo, canRedo, mod, change, setBlock, setAlign, indent, setCalloutTone, faq, columns, setLineHeight, setCellBackground, style, underlineColor, setUnderlineType, clearUnderline, borderColor, setBorderType, setBorderWidth, currentSize, stepSize, table, insertTable, blockInfo, fontLabel, commitFont, commitSize, off, noText }
 }
 
 /**

@@ -108,6 +108,9 @@ export const HomepageView: FC<{ row: HomepageRow | null }> = ({ row }) => {
   const [content, setContent] = useState<HomepageContent>(saved)
   const changed = JSON.stringify(content) !== JSON.stringify(saved)
   const isBuiltIn = JSON.stringify(content) === JSON.stringify(BUILT_IN_HOMEPAGE)
+  // The homepage as it was before the last save: the way back from a save that went wrong
+  const hasPrevious = typeof row?.previous_content === 'object' && row.previous_content !== null
+  const previous = homepageFrom(row?.previous_content)
 
   const setHero = (patch: Partial<HomepageContent['hero']>) => setContent((c) => ({ ...c, hero: { ...c.hero, ...patch } }))
   const setSection = (s: HomeSection) => setContent((c) => ({ ...c, sections: c.sections.map((x) => (x.id === s.id ? s : x)) }))
@@ -140,7 +143,7 @@ export const HomepageView: FC<{ row: HomepageRow | null }> = ({ row }) => {
       <PageTitle
         icon={<LayoutTemplate />}
         title="Homepage"
-        description="The words on the homepage, and which sections it shows in what order. Saving puts them on the site right away."
+        description="The words on the homepage, and which sections it shows in what order. Saving puts them on the site right away, and the version before is kept in case you want it back."
         actions={
           <>
             <Button href="/dashboard/titles" size="sm" variant="ghost">
@@ -218,6 +221,15 @@ export const HomepageView: FC<{ row: HomepageRow | null }> = ({ row }) => {
         </Button>
         <Button size="sm" variant="outline" disabled={!changed} onClick={() => setContent(saved)}>
           Undo changes
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!hasPrevious || JSON.stringify(content) === JSON.stringify(previous)}
+          title={hasPrevious ? 'The homepage as it was before the last save' : 'Kept from the next save on'}
+          onClick={() => setContent(previous)}
+        >
+          Bring back the previous version
         </Button>
         <Button
           size="sm"

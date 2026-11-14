@@ -74,7 +74,7 @@ export const RedirectsView: FC<{ redirects: RedirectRow[] }> = ({ redirects }) =
     <>
       <PageTitle
         icon={<CornerUpRight />}
-        title="Redirects"
+        title="Old links"
         description="Short or old addresses that forward somewhere else, like /welcome-week to an event’s page. A renamed page forwards on its own."
         actions={
           <Button size="sm" leading={<Plus size={15} aria-hidden />} onClick={() => open('new')}>

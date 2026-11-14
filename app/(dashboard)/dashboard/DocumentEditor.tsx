@@ -4,21 +4,24 @@
 import { AlertTriangle, ArrowLeft, Check, Copy, Eye, History, ImageIcon, Images, Info, Link2, Trash2, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState, type FC, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react'
 
-import { Alert, Badge, Button, Dialog, useNotify } from '@/components'
-import { DateTimePicker, Field, Input, RichTextEditor, SegmentedControl, Select, SlugInput, Switch, TextArea, type RichTextValue } from '@/components/Form'
-import { checkLinks, checkSlug, deletePage, deletePost, duplicateDocument, savePage, savePost } from '@/lib/dashboard/actions'
+import { Alert, Avatar, Badge, Button, Dialog, useNotify } from '@/components'
+import { DateTimePicker, Field, Input, RichTextEditor, SegmentedControl, Select, SlugInput, Switch, TextArea, type CommentsAdapter, type RichTextValue } from '@/components/Form'
+import { addComment, checkLinks, checkSlug, deleteComment, deletePage, deletePost, duplicateDocument, listComments, savePage, savePost, setThreadResolved } from '@/lib/dashboard/actions'
+import { createClient } from '@/lib/supabase/client'
+import type { DocumentCommentRow } from '@/lib/supabase/types'
 import { documentAssets, documentChecks } from '@/lib/dashboard/documentChecks'
 import { clearDraft, readDraft, writeDraft, type StoredDraft } from '@/lib/dashboard/draftStore'
-import { formatDate } from '@/lib/dashboard/format'
-import { uploadImage } from '@/lib/dashboard/media'
+import { atlantaToIso, formatDate, isoToAtlanta } from '@/lib/dashboard/format'
+import { FILE_ACCEPT, uploadFile, uploadImage } from '@/lib/dashboard/media'
 import { MediaPicker } from './MediaPicker'
 import { DocumentBody, PageSections, plainText, readingMinutes } from '@/lib/richtext'
 import { upgradeEateriesBlocks } from '@/lib/richtext/blocks'
 import { safeSrc } from '@/lib/safeUrl'
 import { isSitePage, pageHref, SITE_PAGES } from '@/lib/sitePages'
 import { cn } from '@/lib/cn'
+import { useInterceptNavigation } from '@/hooks/useInterceptNavigation'
 import { PAGE_EYEBROW_MAX as EYEBROW_MAX, PAGE_SUBTITLE_MAX as SUBTITLE_MAX, POST_CATEGORIES, type PageLayout, type PageRow, type NavPlacement, type PageSection, type PostRow, type PublishStatus } from '@/lib/supabase/types'
 import { NAV_LABEL_MAX, NAV_PLACEMENTS } from '@/lib/dashboard/validate'
 
@@ -29,7 +32,7 @@ import { useAction } from './ui'
 type Doc = Pick<PostRow, 'id' | 'title' | 'slug' | 'body' | 'status'> &
   Partial<
     Pick<PostRow, 'excerpt' | 'cover_image_url' | 'published_at' | 'updated_at' | 'author_email' | 'category' | 'featured' | 'review_requested' | 'review_note'> &
-      Pick<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'updated_by' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort'>
+      Pick<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'updated_by' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort' | 'header_menu'>
   >
 
 /** Another page, as the editor needs it to offer "sits under" */
@@ -47,7 +50,7 @@ const KINDS = {
   page: {
     save: savePage,
     remove: deletePage,
-    base: '/pages',
+    base: '',
     list: '/dashboard/pages',
     noun: 'page',
     plural: 'Pages',
@@ -70,15 +73,8 @@ const Card: FC<{ title: string; action?: ReactNode; children: ReactNode }> = ({ 
   </section>
 )
 
-/** A saved time as the date-time picker holds it, on this computer's clock: "2026-11-02T09:00" */
-const toLocalInput = (iso: string | null | undefined) => {
-  if (!iso) return null
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-/** The picker's time, on this computer's clock, as a moment to save */
-const fromLocalInput = (local: string | null) => (local ? new Date(local).toISOString() : '')
+/** When a time on Atlanta's clock (as the schedule's pickers hold it) is, in ms; NaN if it isn't one */
+const atlantaMs = (local: string | null) => Date.parse(atlantaToIso(local) ?? '')
 
 /** The first sentence or so of the body, for a summary nobody wrote */
 const firstWords = (text: string) => {
@@ -100,14 +96,38 @@ const firstWords = (text: string) => {
  * after a crash or a closed tab. Posts written in markdown before the editor open in it as
  * formatted text, and are saved in the editor's format from then on.
  */
-export const DocumentEditor: FC<{
+interface DocumentEditorProps {
   kind: 'post' | 'page'
   doc: Doc | null
   /** A look without signing in (the dev preview): nothing is sent to the server */
   demo?: boolean
   /** The site's other pages, for the ones this page can sit under */
   pages?: readonly OtherPage[]
-}> = ({ kind, doc, demo = false, pages = [] }) => {
+  /** The site's menus (Site chrome, Navigation), for a page to show a different one in the header */
+  menus?: readonly { id: string; name: string }[]
+  /** Who's signed in: for comments, and for telling others editing the same one */
+  me?: { name: string; email: string }
+}
+
+/**
+ * The editor, built once and kept through its own saves (so the cursor, the undo history, and
+ * what's typed while a save is on its way all stay). It's rebuilt from what's saved only when
+ * that's asked for: after restoring an earlier version, or to take in someone else's save.
+ */
+export const DocumentEditor: FC<DocumentEditorProps> = (props) => {
+  const router = useRouter()
+  const stamp = props.doc?.updated_at ?? ''
+  // `awaiting` is the save the editor shows; once a different one arrives, it starts over from that
+  const [build, setBuild] = useState<{ key: number; awaiting: string | null }>({ key: 0, awaiting: null })
+  if (build.awaiting !== null && build.awaiting !== stamp) setBuild({ key: build.key + 1, awaiting: null })
+  const reload = useCallback(() => {
+    setBuild((b) => ({ ...b, awaiting: stamp }))
+    router.refresh()
+  }, [router, stamp])
+  return <Editor key={build.key} {...props} reload={reload} />
+}
+
+const Editor: FC<DocumentEditorProps & { reload: () => void }> = ({ kind, doc, demo = false, pages = [], menus = [], me, reload }) => {
   const k = KINDS[kind]
   const router = useRouter()
   const { confirm, toast } = useNotify()
@@ -136,6 +156,8 @@ export const DocumentEditor: FC<{
   const [navPlacement, setNavPlacement] = useState<NavPlacement>(doc?.nav_placement ?? 'none')
   const [navLabel, setNavLabel] = useState(doc?.nav_label ?? '')
   const [navSort, setNavSort] = useState(String(doc?.nav_sort ?? 0))
+  // A different menu across the top on this page; '' keeps the site's own
+  const [headerMenu, setHeaderMenu] = useState(doc?.header_menu ?? '')
   const replacesSitePage = kind === 'page' && isSitePage(slug)
   // Pages go one level deep: a page under another can't be a parent, nor can a parent go under another
   const hasSubpages = !!doc && pages.some((p) => p.parent_id === doc.id)
@@ -149,13 +171,90 @@ export const DocumentEditor: FC<{
   const [eyebrow, setEyebrow] = useState(doc?.eyebrow ?? '')
   const [showToc, setShowToc] = useState(doc?.show_toc ?? false)
   const [showUpdated, setShowUpdated] = useState(doc?.show_updated ?? false)
-  const [publishAt, setPublishAt] = useState<string | null>(() => toLocalInput(doc?.publish_at))
-  const [unpublishAt, setUnpublishAt] = useState<string | null>(() => toLocalInput(doc?.unpublish_at))
+  const [publishAt, setPublishAt] = useState<string | null>(() => isoToAtlanta(doc?.publish_at))
+  const [unpublishAt, setUnpublishAt] = useState<string | null>(() => isoToAtlanta(doc?.unpublish_at))
   const [coverFailed, setCoverFailed] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
   const [coverError, setCoverError] = useState('')
   const coverFileRef = useRef<HTMLInputElement>(null)
   const [previewing, setPreviewing] = useState(false)
+
+  // ── Working on it together: comments, who else has it open, and their saves ──
+  const shared = !!doc && !demo && !!me
+  const [commentRows, setCommentRows] = useState<DocumentCommentRow[]>([])
+  const [others, setOthers] = useState<{ name: string; email: string }[]>([])
+  const [newer, setNewer] = useState<{ name: string; at: string } | null>(null)
+  const channelRef = useRef<ReturnType<NonNullable<ReturnType<typeof createClient>>['channel']> | null>(null)
+  const docId = doc?.id ?? null
+
+  const reloadComments = useCallback(async () => {
+    if (!docId) return
+    setCommentRows(await listComments(kind, docId))
+  }, [kind, docId])
+
+  /** Tells the others with it open that something changed, so they see it too */
+  const announce = useCallback((event: 'saved' | 'comments') => {
+    channelRef.current?.send({ type: 'broadcast', event, payload: { name: me?.name ?? '', at: new Date().toISOString() } })
+  }, [me?.name])
+
+  useEffect(() => {
+    if (shared) reloadComments()
+  }, [shared, reloadComments])
+
+  // Who else has it open, as Supabase Realtime sees them; their saves and comments as they happen
+  useEffect(() => {
+    if (!shared || !docId || !me) return
+    const supabase = createClient()
+    if (!supabase) return
+    const channel = supabase.channel(`doc:${kind}:${docId}`, { config: { presence: { key: me.email } } })
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState<{ name: string; email: string }>()
+        setOthers(
+          Object.entries(state)
+            .filter(([key]) => key !== me.email)
+            .map(([, metas]) => metas[0])
+            .filter((o): o is { name: string; email: string } & { presence_ref: string } => !!o)
+            .map(({ name, email }) => ({ name, email }))
+        )
+      })
+      .on('broadcast', { event: 'saved' }, ({ payload }) => setNewer(payload as { name: string; at: string }))
+      .on('broadcast', { event: 'comments' }, () => reloadComments())
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') channel.track({ name: me.name, email: me.email })
+      })
+    channelRef.current = channel
+    return () => {
+      channelRef.current = null
+      supabase.removeChannel(channel)
+    }
+  }, [shared, kind, docId, me, reloadComments])
+
+  /** The comments, as the editor reads and writes them */
+  const comments = useMemo<CommentsAdapter | undefined>(() => {
+    if (!shared || !docId) return undefined
+    const sure = async (result: Promise<{ ok: boolean; error?: string; errors?: Record<string, string | undefined> }>) => {
+      const r = await result
+      if (!r.ok) throw new Error(r.error ?? Object.values(r.errors ?? {})[0] ?? 'That didn’t save. Try again?')
+      await reloadComments()
+      announce('comments')
+    }
+    return {
+      comments: commentRows.map((c) => ({
+        id: c.id,
+        threadId: c.thread_id,
+        quote: c.quote,
+        body: c.body,
+        authorName: c.author_name ?? c.author_email.split('@')[0],
+        createdAt: c.created_at,
+        resolved: c.resolved,
+        mine: c.author_email.toLowerCase() === me?.email.toLowerCase(),
+      })),
+      add: (threadId, quote, body) => sure(addComment(kind, docId, threadId, quote, body)),
+      resolve: (threadId, resolved) => sure(setThreadResolved(kind, docId, threadId, resolved)),
+      remove: (id) => sure(deleteComment(id)),
+    }
+  }, [shared, docId, kind, commentRows, me?.email, reloadComments, announce])
   const [historyOpen, setHistoryOpen] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [category, setCategory] = useState<string | null>(doc?.category ?? null)
@@ -193,6 +292,7 @@ export const DocumentEditor: FC<{
     navPlacement,
     navLabel,
     navSort,
+    headerMenu,
     publishAt,
     unpublishAt,
     category,
@@ -207,12 +307,27 @@ export const DocumentEditor: FC<{
   }, [saved, ready, snapshot])
   const dirty = saved !== null && snapshot !== saved
 
+  // Leaving with unsaved changes asks first: any link on the screen (the sidebar's too), and
+  // closing or reloading the tab. What's here is kept in this browser either way.
+  const screenRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    if (!dirty) return
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
+    screenRef.current = document.body
+  }, [])
+  useInterceptNavigation(screenRef, {
+    shouldIntercept: dirty && !demo,
+    onIntercept: async (destination) => {
+      const ok = await confirm({
+        title: 'Leave without saving?',
+        message: `Your changes aren’t saved. They’re kept in this browser, and offered back the next time you open this ${k.noun}.`,
+        variant: 'warning',
+        confirmLabel: 'Leave',
+      })
+      if (!ok) return
+      writeDraft(kind, doc?.id ?? null, snapshot)
+      if (destination.origin === window.location.origin) router.push(`${destination.pathname}${destination.search}${destination.hash}`)
+      else window.location.assign(destination.href)
+    },
+  })
 
   // What was here last time, if it never got saved
   useEffect(() => {
@@ -250,6 +365,7 @@ export const DocumentEditor: FC<{
     setNavPlacement(s.navPlacement ?? 'none')
     setNavLabel(s.navLabel ?? '')
     setNavSort(s.navSort ?? '0')
+    setHeaderMenu(s.headerMenu ?? '')
     setPublishAt(s.publishAt)
     setUnpublishAt(s.unpublishAt)
     setCategory(s.category ?? null)
@@ -262,20 +378,26 @@ export const DocumentEditor: FC<{
     setRecovered(null)
   }
 
-  const save = (status: PublishStatus) => {
+  // The save this editor's writing is built on, to tell when someone else has saved since
+  const loadedAt = useRef(doc?.updated_at ?? null)
+  const saving = useRef(false)
+  const save = (status: PublishStatus, over = false) => {
     if (demo)
       return toast({
         title: 'This is a preview',
         message: 'Saving needs an officer sign-in, in the dashboard.',
       })
+    if (saving.current) return
+    saving.current = true
     const data = new FormData()
+    if (loadedAt.current && !over) data.set('loaded_at', loadedAt.current)
     data.set('title', title)
     data.set('slug', slug)
     data.set('body', body)
     data.set('status', status)
     data.set(kind === 'post' ? 'excerpt' : 'description', summary)
-    data.set('publish_at', fromLocalInput(publishAt))
-    data.set('unpublish_at', fromLocalInput(unpublishAt))
+    data.set('publish_at', atlantaToIso(publishAt) ?? '')
+    data.set('unpublish_at', atlantaToIso(unpublishAt) ?? '')
     if (reviewRequested) data.set('review_requested', 'on')
     data.set('review_note', reviewNote)
     if (kind === 'post') {
@@ -292,20 +414,33 @@ export const DocumentEditor: FC<{
       data.set('nav_placement', navPlacement)
       data.set('nav_label', navLabel)
       data.set('nav_sort', navSort)
+      data.set('header_menu', headerMenu)
       data.set('subtitle', subtitle)
       data.set('layout', layout)
       data.set('sections', JSON.stringify(sections))
     }
     run(
-      () => k.save(doc?.id ?? null, data),
+      async () => {
+        try {
+          const result = await k.save(doc?.id ?? null, data)
+          if (!result.ok && result.conflict) setNewer(result.conflict)
+          return result
+        } finally {
+          saving.current = false
+        }
+      },
       (result) => {
+        if (result.updatedAt) loadedAt.current = result.updatedAt
         clearDraft(kind, doc?.id ?? null)
-        setSaved(snapshot)
         setSavedAt(new Date())
+        setNewer(null)
+        announce('saved')
         if (status === 'published') {
+          // Publishing settles a review, here as on the server, and that isn't a change to save
+          setSaved(JSON.stringify({ ...JSON.parse(snapshot), reviewRequested: false, reviewNote: '' }))
           setReviewRequested(false)
           setReviewNote('')
-        }
+        } else setSaved(snapshot)
         if (!doc && result.id) router.replace(`${k.list}/${result.id}`)
         else router.refresh()
       }
@@ -409,6 +544,16 @@ export const DocumentEditor: FC<{
           {statusBadge}
           <span className="text-[0.8rem] text-muted max-sm:hidden">{lastSaved}</span>
         </span>
+        {others.length ? (
+          <span className="flex items-center gap-2 text-[0.8rem] text-muted">
+            <span className="flex -space-x-2">
+              {others.slice(0, 3).map((o) => (
+                <Avatar key={o.email} name={o.name} size="xs" />
+              ))}
+            </span>
+            {others.length === 1 ? `${others[0].name} has this open too` : `${others.length} others have this open`}
+          </span>
+        ) : null}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button size="sm" variant="ghost" leading={<Eye size={15} aria-hidden />} onClick={() => setPreviewing(true)}>
             Preview
@@ -423,10 +568,29 @@ export const DocumentEditor: FC<{
             </Button>
           )}
           <Button size="sm" loading={pending} onClick={() => save('published')}>
-            {live ? 'Update' : publishAt && Date.parse(publishAt) > now ? 'Schedule' : 'Publish'}
+            {live ? 'Update' : atlantaMs(publishAt) > now ? 'Schedule' : 'Publish'}
           </Button>
         </div>
       </div>
+      {newer ? (
+        <Alert
+          tone="warning"
+          title={`${newer.name} saved this ${k.noun} at ${new Date(newer.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+          actions={
+            <>
+              <Button size="sm" variant="outline" onClick={reload}>
+                Reload with their changes
+              </Button>
+              <Button size="sm" variant="ghost" loading={pending} onClick={() => save(live ? 'published' : 'draft', true)}>
+                Save mine over theirs
+              </Button>
+            </>
+          }
+          onDismiss={() => setNewer(null)}
+        >
+          Your copy is behind theirs, so it won’t save as it is. Reload to get their changes first (what you’ve written since your last save is kept as a draft in this browser), or save yours over theirs.
+        </Alert>
+      ) : null}
 
       {recovered ? (
         <Alert
@@ -501,7 +665,7 @@ export const DocumentEditor: FC<{
               value={slug}
               onValueChange={setSlug}
               source={title}
-              prefix={`${k.base}/`}
+              prefix={kind === 'page' ? `${parentSlug ? pageHref(parentSlug) : ''}/` : `${k.base}/`}
               locked={live}
               checkAvailability={demo ? undefined : (s) => checkSlug(kind, s, doc?.id ?? null)}
             />
@@ -515,6 +679,7 @@ export const DocumentEditor: FC<{
               errors={errors}
               uploadImage={demo ? undefined : uploadImage}
               imagePicker={demo ? undefined : MediaPicker}
+              uploadFile={demo ? undefined : uploadFile}
             />
           ) : (
             <RichTextEditor
@@ -525,6 +690,9 @@ export const DocumentEditor: FC<{
               onChange={setRich}
               uploadImage={demo ? undefined : uploadImage}
               imagePicker={demo ? undefined : MediaPicker}
+              uploadFile={demo ? undefined : uploadFile}
+              fileAccept={FILE_ACCEPT}
+              comments={comments}
               minHeight="26rem"
               placeholder={kind === 'post' ? 'Tell people what happened, or what’s coming up…' : 'Write the page…'}
             />
@@ -629,6 +797,24 @@ export const DocumentEditor: FC<{
                     <Input size="sm" type="number" inputMode="numeric" value={navSort} onChange={(e) => setNavSort(e.target.value)} />
                   </Field>
                 </>
+              ) : null}
+              {menus.length ? (
+                <Field
+                  label="Header menu on this page"
+                  error={errors.header_menu}
+                  description={headerMenu ? 'Shown across the top here, and on the pages under this one that don’t pick their own.' : 'Pick a menu to show a different one across the top on this page.'}
+                >
+                  <Select
+                    size="sm"
+                    value={headerMenu}
+                    onValueChange={(v) => setHeaderMenu(v ?? '')}
+                    options={[
+                      { value: '', label: 'The site’s main menu' },
+                      ...(headerMenu && !menus.some((m) => m.id === headerMenu) ? [{ value: headerMenu, label: 'A menu that was removed' }] : []),
+                      ...menus.map((m) => ({ value: m.id, label: m.name || 'Untitled menu' })),
+                    ]}
+                  />
+                </Field>
               ) : null}
             </Card>
           ) : null}
@@ -789,10 +975,10 @@ export const DocumentEditor: FC<{
               </div>
             ) : null}
             <div className="flex flex-col gap-3 border-t border-line pt-3">
-                <Field label="Goes live" error={errors.publish_at} description="Blank: as soon as it’s published.">
+                <Field label="Goes live" error={errors.publish_at} description="Atlanta time. Blank: as soon as it’s published.">
                   <DateTimePicker size="sm" value={publishAt} onValueChange={setPublishAt} />
                 </Field>
-                <Field label="Comes down" error={errors.unpublish_at} description="Blank: it stays up.">
+                <Field label="Comes down" error={errors.unpublish_at} description="Atlanta time. Blank: it stays up.">
                   <DateTimePicker size="sm" value={unpublishAt} onValueChange={setUnpublishAt} />
                 </Field>
                 {publishAt || unpublishAt ? (
@@ -849,7 +1035,7 @@ export const DocumentEditor: FC<{
         </aside>
       </div>
 
-      {doc && !demo ? <RevisionHistory kind={kind} docId={doc.id} open={historyOpen} onClose={() => setHistoryOpen(false)} dirty={dirty} /> : null}
+      {doc && !demo ? <RevisionHistory kind={kind} docId={doc.id} open={historyOpen} onClose={() => setHistoryOpen(false)} dirty={dirty} live={live} onRestored={reload} /> : null}
 
       <Dialog open={previewing} onClose={() => setPreviewing(false)} title="Preview" description={`How it reads at ${pathOf(slug || '…')}`} size="lg">
         <article className="flex flex-col gap-4 pb-2">

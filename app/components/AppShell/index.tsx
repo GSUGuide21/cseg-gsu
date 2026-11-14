@@ -64,6 +64,7 @@ const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; op
         ) : section.label ? (
           <p className={cn('m-0 px-3 pb-1 text-[0.7rem] font-bold tracking-wider text-muted uppercase', collapsed && 'sr-only')}>{section.label}</p>
         ) : null}
+        {section.description && shown && !collapsed ? <p className="m-0 px-3 pb-1 text-[0.75rem] leading-snug text-muted">{section.description}</p> : null}
         <ul id={listId} hidden={!shown} className={cn('m-0 list-none flex-col gap-0.5 p-0', shown && 'flex')}>
           {section.items.map((item) => {
             const on = isActive(item, pathname)

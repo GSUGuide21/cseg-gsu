@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react'
 
+import type { CommentsAdapter } from './comments'
+
 /** What a page's image picker is given */
 export interface ImagePickerProps {
   open: boolean
@@ -60,6 +62,19 @@ export interface RichTextEditorProps {
   uploadImage?: (file: File) => Promise<string>
   /** A dialog for picking an image that's already stored; with it, the Image tool offers one */
   imagePicker?: ComponentType<ImagePickerProps>
+  /**
+   * Stores a document (a PDF, a Word file) and resolves to its address and a name for it, or
+   * throws an Error saying why not. With it, the File block can upload, and documents
+   * dropped or pasted into the text go in as File blocks.
+   */
+  uploadFile?: (file: File) => Promise<{ url: string; name: string }>
+  /** The types the file picker offers (".pdf,.docx"); any, when left out */
+  fileAccept?: string
+  /**
+   * Officers' comments on the writing, kept by the page: with it, selected words can be
+   * commented on, and the threads show under the writing
+   */
+  comments?: CommentsAdapter
   id?: string
   disabled?: boolean
   invalid?: boolean

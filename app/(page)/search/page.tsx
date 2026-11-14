@@ -7,7 +7,7 @@ import { Input } from '@/components/Form'
 import { PageHeader } from '@/globals/Page'
 import { button, pageShell } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
-import { getSearchIndex } from '@/lib/dashboard/public'
+import { getSearchIndex, getSiteChrome } from '@/lib/dashboard/public'
 import { searchContent } from '@/lib/search'
 
 // Results pages aren't worth a search engine's time
@@ -19,13 +19,13 @@ const isExternal = (href: string) => /^https?:/.test(href)
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const { q } = await searchParams
   const query = (Array.isArray(q) ? q[0] : (q ?? '')).trim().slice(0, 200)
-  const results = query ? searchContent(await getSearchIndex(), query) : []
+  const [{ search: words }, results] = await Promise.all([getSiteChrome(), query ? getSearchIndex().then((index) => searchContent(index, query)) : []])
 
   return (
     <div className={cn(pageShell, 'max-w-3xl gap-[clamp(1.5rem,3vw,2rem)]')}>
-      <PageHeader eyebrow="Search" title="Find it on the site" lead="Posts, pages, campus resources, and places to eat." />
+      <PageHeader eyebrow="Search" title={words.title} lead={words.lead || undefined} />
       <form action="/search" role="search" className="flex flex-wrap gap-2">
-        <Input name="q" type="search" aria-label="Search the site" defaultValue={query} placeholder="Try “financial aid” or “late night food”" leading={<Search size={16} aria-hidden />} className="min-w-56 flex-1" />
+        <Input name="q" type="search" aria-label="Search the site" defaultValue={query} placeholder={words.placeholder || undefined} leading={<Search size={16} aria-hidden />} className="min-w-56 flex-1" />
         <button type="submit" className={button()}>
           Search
         </button>
@@ -54,7 +54,17 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           ))}
         </ul>
       ) : query ? (
-        <EmptyState bordered icon={<Search />} title="Nothing found" description="Try a shorter search, or different words." />
+        <EmptyState bordered icon={<Search />} title={words.emptyTitle} description={words.emptyText || undefined} />
+      ) : words.suggestions.length ? (
+        <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Suggested searches">
+          {words.suggestions.map((s) => (
+            <li key={s}>
+              <Link href={`/search?q=${encodeURIComponent(s)}`} className={button({ variant: 'outline', size: 'sm' })}>
+                {s}
+              </Link>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   )

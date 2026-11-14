@@ -73,11 +73,12 @@ describe('Post reading', () => {
     expect(readingMinutes(Array(660).fill('word').join(' '))).toBe(3)
   })
 
-  it('lists main headings with their links, once each', () => {
+  it('lists main headings with their links, a second with the same words linking to its own place', () => {
     const body = rich(heading('h2', 'Getting there'), heading('h3', 'By train'), heading('h2', 'What to bring'), heading('h2', 'Getting there'))
     expect(documentHeadings(body)).toEqual([
       { id: 'getting-there', text: 'Getting there' },
       { id: 'what-to-bring', text: 'What to bring' },
+      { id: 'getting-there-2', text: 'Getting there' },
     ])
   })
 

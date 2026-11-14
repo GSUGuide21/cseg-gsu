@@ -20,6 +20,60 @@ const EXTENSIONS: Record<string, string> = {
   'image/avif': 'avif',
 }
 
+export const FILES_BUCKET = 'files'
+export const FILE_MAX_BYTES = 15 * 1024 * 1024
+
+/** The documents the files bucket takes, by type and by how their names end */
+const FILE_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  ics: 'text/calendar',
+}
+
+/** What the file picker offers */
+export const FILE_ACCEPT = Object.keys(FILE_TYPES).map((ext) => `.${ext}`).join(',')
+
+/** A file's name, safe in an address: its words and extension, lowercase, with hyphens between */
+const safeFileName = (name: string, ext: string) => {
+  const base = name.replace(/\.[^.]+$/, '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+  return `${base || 'file'}.${ext}`
+}
+
+/**
+ * Stores a document (a PDF, Word, Excel, or PowerPoint file, and the like) and gives back
+ * its public address, which ends in the file's own name so a download keeps it; throws with
+ * a message to show
+ */
+export async function uploadFile(file: File): Promise<{ url: string; name: string }> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  const type = FILE_TYPES[ext]
+  if (!type) throw new Error('Use a PDF, Word, Excel, PowerPoint, CSV, or text file.')
+  if (file.size > FILE_MAX_BYTES) throw new Error(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Files can be up to 15 MB.`)
+  const supabase = createClient()
+  if (!supabase) throw new Error('Uploads need Supabase set up first.')
+  const now = new Date()
+  // Its own folder, so two files with the same name never meet
+  const path = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}/${safeFileName(file.name, ext)}`
+  const { error } = await supabase.storage.from(FILES_BUCKET).upload(path, file, { contentType: type, cacheControl: '31536000', upsert: false })
+  if (error) {
+    if (/row-level security|unauthorized|403/i.test(error.message)) throw new Error('Only officers can upload files. Try signing in again.')
+    if (/bucket not found/i.test(error.message)) throw new Error('The files bucket isn’t set up yet. Run the files migration in Supabase.')
+    if (/mime|type/i.test(error.message)) throw new Error('That kind of file can’t be uploaded. Use a PDF, Word, Excel, PowerPoint, CSV, or text file.')
+    throw new Error(error.message)
+  }
+  return { url: supabase.storage.from(FILES_BUCKET).getPublicUrl(path).data.publicUrl, name: file.name.replace(/\.[^.]+$/, '') }
+}
+
 /** Stores an image and gives back its public https address; throws with a message to show */
 export async function uploadImage(file: File): Promise<string> {
   const ext = EXTENSIONS[file.type]

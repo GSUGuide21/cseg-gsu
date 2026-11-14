@@ -63,28 +63,46 @@ export const NAV_LINKS: readonly NavItem[] = [
   { href: '/contact', label: 'Contact' },
 ] as const
 
-export const FOOTER_NAV_SECTIONS: readonly { title: string; links: readonly NavLink[] }[] = [
+export type FooterNavSection = { readonly title: string; readonly links: readonly NavLink[] }
+
+export const FOOTER_NAV_SECTIONS: readonly FooterNavSection[] = [
   {
-    title: 'Explore',
+    title: 'About',
     links: [
-      { href: '/', label: 'Home' },
-      { href: '/about', label: 'About' },
+      { href: '/about', label: 'About CSEG' },
       { href: '/executives', label: 'Executives' },
-      { href: '/events', label: 'Events' },
-      { href: '/map', label: 'Campus map' },
-      { href: '/eat', label: 'Places to eat' },
-      { href: '/resources', label: 'Resources' },
-      { href: '/about#faq', label: 'FAQ' },
       { href: '/constitution', label: 'Constitution' },
       { href: '/affiliates', label: 'Affiliates' },
+      { href: '/about#faq', label: 'FAQ' },
+    ],
+  },
+  {
+    title: 'Campus',
+    links: [
+      { href: '/map', label: 'Campus map' },
+      { href: '/eat', label: 'Places to eat' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { href: '/resources', label: 'Student resources' },
+      { href: '/resources#student-life', label: 'Student Life' },
+      { href: '/resources#colleges', label: 'Colleges & schools' },
+      { href: '/resources#chats', label: 'Group chats' },
     ],
   },
   {
     title: 'Get involved',
     links: [
+      { href: '/events', label: 'Events' },
       { href: '/join', label: 'Join' },
       { href: '/contact', label: 'Contact' },
     ],
+  },
+  {
+    title: 'Officers',
+    links: [{ href: '/dashboard', label: 'Dashboard' }],
   },
 ]
 
@@ -98,8 +116,8 @@ export const navWithPages = (links: readonly NavItem[], pages: readonly NavMenuL
   return [...links, { href: pages[0].href, label: 'More', menu: { description: 'More from CSEG, written by the officers.', links: pages } }]
 }
 
-/** The footer's sections, with a More section for the pages officers listed there */
-export const footerWithPages = (pages: readonly NavLink[]) => (pages.length ? [...FOOTER_NAV_SECTIONS, { title: 'More', links: pages }] : FOOTER_NAV_SECTIONS)
+/** The footer's sections (the built-in ones unless given), with a More section for the pages officers listed there */
+export const footerWithPages = (pages: readonly NavLink[], sections: readonly FooterNavSection[] = FOOTER_NAV_SECTIONS) => (pages.length ? [...sections, { title: 'More', links: pages }] : sections)
 
 export const isNavActive = (pathname: string, href: string): boolean =>
   href === '/'

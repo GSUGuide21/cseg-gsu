@@ -8,6 +8,10 @@ import {
   $isTableCellNode,
   $isTableRowNode,
   $isTableSelection,
+  $mergeCells,
+  $unmergeCell,
+  type TableCellNode,
+  $setTableColumnIsHeader,
   $setTableRowIsHeader,
   TableCellHeaderStates,
 } from '@lexical/table'
@@ -63,6 +67,103 @@ export const $toggleHeaderRow = () => {
   if (table) $setTableRowIsHeader(table, 0, !$hasHeaderRow())
 }
 
+/** The cells selected across (a drag, or Shift+click), or the one the cursor's in */
+const $selectedCells = (): TableCellNode[] => {
+  const selection = $getSelection()
+  if ($isTableSelection(selection)) return selection.getNodes().filter($isTableCellNode)
+  if (!$isRangeSelection(selection)) return []
+  const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode())
+  return cell ? [cell] : []
+}
+
+/** The selected cells as one; nothing happens with only one selected */
+export const $mergeSelectedCells = () => {
+  const cells = $selectedCells()
+  if (cells.length > 1) $mergeCells(cells)
+}
+
+/** A merged cell back into the cells it was */
+export const $splitMergedCell = () => {
+  const [cell] = $selectedCells()
+  if (cell && (cell.getColSpan() > 1 || cell.getRowSpan() > 1)) $unmergeCell()
+}
+
+/** The selected cells' background (null for none) */
+export const $setCellBackground = (color: string | null) => {
+  for (const cell of $selectedCells()) cell.setBackgroundColor(color)
+}
+
+/** The background of the cell the cursor's in ("" for none) */
+export const $cellBackgroundAtSelection = () => $selectedCells()[0]?.getBackgroundColor() ?? ''
+
+/** Whether the cursor's table has a header column: every row's first cell is a header */
+export const $hasHeaderColumn = () => {
+  const rows = $selectedTable()?.getChildren().filter($isTableRowNode) ?? []
+  return rows.length > 0 && rows.every((row) => {
+    const first = row.getFirstChild()
+    return $isTableCellNode(first) && first.hasHeaderState(TableCellHeaderStates.COLUMN)
+  })
+}
+
+/** Turns the first column of the cursor's table into headers, or back */
+export const $toggleHeaderColumn = () => {
+  const table = $selectedTable()
+  if (table) $setTableColumnIsHeader(table, 0, !$hasHeaderColumn())
+}
+
+/** Whether the cursor's table shades every other row */
+export const $hasRowStriping = () => $selectedTable()?.getRowStriping() ?? false
+
+/** Shades every other row of the cursor's table, or stops */
+export const $toggleRowStriping = () => {
+  const table = $selectedTable()
+  if (table) table.setRowStriping(!table.getRowStriping())
+}
+
+/** The cursor's table's columns back to sharing its width equally */
+export const $evenColumns = () => $selectedTable()?.setColWidths(undefined)
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+/**
+ * The rows of the cursor's table in order of the cursor's column, A to Z (or Z to A),
+ * numbers by their value. A header row stays on top, and empty cells go last. A table with
+ * merged cells is left as it is: its rows can't be moved apart.
+ */
+export const $sortTableByColumn = (direction: 'asc' | 'desc') => {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return
+  const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode())
+  const table = cell ? $getTableNodeFromLexicalNodeOrThrow(cell) : null
+  if (!cell || !table) return
+  const rows = table.getChildren().filter($isTableRowNode)
+  const cells = rows.flatMap((row) => row.getChildren().filter($isTableCellNode))
+  if (cells.some((c) => c.getColSpan() > 1 || c.getRowSpan() > 1)) return
+  const column = cell.getIndexWithinParent()
+  const isHeader = (row: (typeof rows)[number]) => row.getChildren().every((c) => $isTableCellNode(c) && c.hasHeaderState(TableCellHeaderStates.ROW))
+  let top = 0
+  while (top < rows.length && isHeader(rows[top])) top++
+  const textOf = (row: (typeof rows)[number]) => row.getChildAtIndex(column)?.getTextContent().trim() ?? ''
+  const body = rows.slice(top).sort((a, b) => {
+    const x = textOf(a)
+    const y = textOf(b)
+    if (!x || !y) return x ? -1 : y ? 1 : 0
+    return direction === 'asc' ? collator.compare(x, y) : collator.compare(y, x)
+  })
+  // Copies in the new order, in place of the rows: moving rows' elements about loses the
+  // browser's selection, and the editor would put the cursor back at the top of the table
+  const cursorRow = cell.getParent()
+  let cursorCell: LexicalNode | null = null
+  for (const row of body) {
+    const copy = $parseSerializedNode(serialized(row))
+    if (row.is(cursorRow) && $isElementNode(copy)) cursorCell = copy.getChildAtIndex(column)
+    row.remove()
+    table.append(copy)
+  }
+  // The cursor stays in its cell (now in its row's new place), so sorting again uses the same column
+  if ($isTableCellNode(cursorCell)) cursorCell.selectStart()
+}
+
 /** The table the cursor is in, taken out whole */
 export const $deleteTableAtSelection = () => $selectedTable()?.remove()
 
@@ -72,6 +173,11 @@ export const TABLE_ACTIONS: { label: string; danger?: boolean; $run: () => void 
   { label: 'Insert row below', $run: () => $insertTableRowAtSelection(true) },
   { label: 'Insert column left', $run: () => $insertTableColumnAtSelection(false) },
   { label: 'Insert column right', $run: () => $insertTableColumnAtSelection(true) },
+  { label: 'Merge selected cells', $run: () => $mergeSelectedCells() },
+  { label: 'Split merged cell', $run: () => $splitMergedCell() },
+  { label: 'Sort A to Z by this column', $run: () => $sortTableByColumn('asc') },
+  { label: 'Sort Z to A by this column', $run: () => $sortTableByColumn('desc') },
+  { label: 'Make columns even', $run: () => $evenColumns() },
   { label: 'Delete row', danger: true, $run: () => $deleteTableRowAtSelection() },
   { label: 'Delete column', danger: true, $run: () => $deleteTableColumnAtSelection() },
   { label: 'Delete table', danger: true, $run: $deleteTableAtSelection },
