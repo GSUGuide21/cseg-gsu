@@ -81,16 +81,37 @@ export type PresentationSlide = {
   image?: string
   /** Kept in the deck but skipped when it's shown */
   hidden?: boolean
+  /** Its lists' points come in one at a time, a click each, as the show goes */
+  reveal?: boolean
+  /** The second column's writing, for the layouts with two */
+  body2?: string
+  /** The comparison layout's two column headings */
+  label?: string
+  label2?: string
+  /** Its own background instead of the theme's: a colour (#rrggbb), or a picture (https://), which wins */
+  bgColor?: string
+  bgImage?: string
+  /** How it arrives, instead of the deck's way */
+  transition?: PresentationSettings['transition']
+  /** Seconds it stays up when the deck plays by itself, instead of the deck's time */
+  advance?: number
 }
 
 /** How a slide is arranged */
-export type SlideLayout = 'content' | 'title' | 'section' | 'image-left' | 'image-right' | 'image-full'
+export type SlideLayout = 'content' | 'title' | 'section' | 'image-left' | 'image-right' | 'image-full' | 'two-column' | 'comparison' | 'quote' | 'blank'
 
-/** How a deck looks and plays: its colours, how a slide arrives, and seconds per slide when it plays by itself (0: it doesn't) */
+/**
+ * How a deck looks and plays: its colours, how a slide arrives, seconds per slide when it
+ * plays by itself (0: it doesn't), and what's along the bottom of every slide: a line of
+ * footer text, the slide's number, and the club's logo
+ */
 export type PresentationSettings = {
   theme: 'site' | 'light' | 'dark' | 'brand' | 'paper'
   transition: 'none' | 'fade' | 'slide'
   autoplay: number
+  footer: string
+  numbers: boolean
+  logo: boolean
 }
 
 /** A slide deck, played at /presentations/its-slug */

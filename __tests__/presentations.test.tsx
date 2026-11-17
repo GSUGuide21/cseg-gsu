@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 
-import { Deck, SlideView } from '../app/(page)/presentations/Deck'
-import { deckSettings, shownSlides } from '../app/lib/presentations'
+import { Deck, SlideThumb, SlideView } from '../app/(page)/presentations/Deck'
+import { deckSettings, shownSlides, slideChrome, toneOf } from '../app/lib/presentations'
 import { parsePresentation, parseSlideNotes, parseSlides } from '../app/lib/dashboard/validate'
 import { isReservedSlug } from '../app/lib/sitePages'
 
@@ -74,14 +74,37 @@ describe('A presentation, as it’s saved', () => {
   it('keeps a slide’s layout, picture, and whether it’s hidden, and only what differs from a plain slide', () => {
     const sent = [
       { id: 'a', title: 'Cover', body: '', layout: 'title', image: 'https://x.test/a.png', hidden: true },
-      { id: 'b', title: 'Plain', body: '', layout: 'content', image: 'javascript:alert(1)', hidden: false },
+      { id: 'b', title: 'Plain', body: '', layout: 'content', image: 'javascript:alert(1)', hidden: false, reveal: 'yes' },
+      { id: 'r', title: 'Points', body: '', reveal: true },
       { id: 'c', title: 'Odd', body: '', layout: 'spinning' },
     ]
     expect(parseSlides(JSON.stringify(sent))).toEqual([
       { id: 'a', title: 'Cover', body: '', layout: 'title', image: 'https://x.test/a.png', hidden: true },
       { id: 'b', title: 'Plain', body: '' },
+      { id: 'r', title: 'Points', body: '', reveal: true },
       { id: 'c', title: 'Odd', body: '' },
     ])
+  })
+
+  it('keeps a slide’s own background, transition, time, and second column, and drops what isn’t one', () => {
+    const sent = [
+      { id: 'a', title: 'Two', body: 'L', body2: 'R', layout: 'comparison', label: '  Driving ', label2: 'MARTA', bgColor: '#0B2A6F', transition: 'slide', advance: 10 },
+      { id: 'b', title: 'Odd', body: '', bgColor: 'red', bgImage: 'http://x.test/a.png', transition: 'spin', advance: 7 },
+      { id: 'c', title: 'Both', body: '', bgColor: '#ffffff', bgImage: 'https://x.test/b.png' },
+    ]
+    expect(parseSlides(JSON.stringify(sent))).toEqual([
+      { id: 'a', title: 'Two', body: 'L', body2: 'R', layout: 'comparison', label: 'Driving', label2: 'MARTA', bgColor: '#0b2a6f', transition: 'slide', advance: 10 },
+      { id: 'b', title: 'Odd', body: '' },
+      // A picture wins over a colour
+      { id: 'c', title: 'Both', body: '', bgImage: 'https://x.test/b.png' },
+    ])
+  })
+
+  it('reads light words on a dark colour, and dark ones on a light colour', () => {
+    expect(toneOf('#0b2a6f')).toBe('dark')
+    expect(toneOf('#000000')).toBe('dark')
+    expect(toneOf('#ffd166')).toBe('light')
+    expect(toneOf('#ffffff')).toBe('light')
   })
 
   it('won’t publish a deck whose slides are all hidden', () => {
@@ -94,12 +117,23 @@ describe('A presentation, as it’s saved', () => {
   })
 
   it('reads the deck’s theme, transition, and autoplay, falling back to the defaults', () => {
-    expect(deckSettings(null)).toEqual({ theme: 'site', transition: 'fade', autoplay: 0 })
-    expect(deckSettings({ theme: 'brand', transition: 'slide', autoplay: '10' })).toEqual({ theme: 'brand', transition: 'slide', autoplay: 10 })
-    expect(deckSettings({ theme: 'neon', transition: 'spin', autoplay: 7 })).toEqual({ theme: 'site', transition: 'fade', autoplay: 0 })
+    const plain = { footer: '', numbers: false, logo: false }
+    expect(deckSettings(null)).toEqual({ theme: 'site', transition: 'fade', autoplay: 0, ...plain })
+    expect(deckSettings({ theme: 'brand', transition: 'slide', autoplay: '10' })).toEqual({ theme: 'brand', transition: 'slide', autoplay: 10, ...plain })
+    expect(deckSettings({ theme: 'neon', transition: 'spin', autoplay: 7 })).toEqual({ theme: 'site', transition: 'fade', autoplay: 0, ...plain })
     const parsed = parsePresentation(form({ status: 'draft', settings: JSON.stringify({ theme: 'dark', autoplay: 30 }) }))
     expect(parsed).toMatchObject({ ok: true, data: { settings: { theme: 'dark', transition: 'fade', autoplay: 30 } } })
     expect(parsePresentation(form({ status: 'draft', settings: 'not json' }))).toMatchObject({ ok: true, data: { settings: { theme: 'site' } } })
+  })
+
+  it('keeps what goes on every slide: a short footer, and numbers and the logo only when asked', () => {
+    expect(deckSettings({ footer: '  CSEG   ·  Fall kickoff ', numbers: true, logo: 'yes' })).toMatchObject({ footer: 'CSEG · Fall kickoff', numbers: true, logo: false })
+    expect(deckSettings({ footer: 'x'.repeat(200) }).footer).toHaveLength(80)
+    const settings = deckSettings({ footer: 'CSEG', numbers: true })
+    expect(slideChrome(settings, 3, 'content')).toEqual({ footer: 'CSEG', number: 3, logo: undefined })
+    // Not on a title slide, nor on a deck that wants nothing there
+    expect(slideChrome(settings, 1, 'title')).toBeUndefined()
+    expect(slideChrome(deckSettings({}), 2, 'content')).toBeUndefined()
   })
 
   it('keeps /presentations for the site', () => {
@@ -146,6 +180,48 @@ describe('Playing a presentation', () => {
     expect(shown()).toBe('Slide 3 of 3: Join us')
   })
 
+  it('moves with the keys a presentation program uses, and goes to a slide by its number', () => {
+    play()
+    fireEvent.keyDown(window, { key: 'n' })
+    expect(shown()).toBe('Slide 2 of 3: What we do')
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(shown()).toBe('Slide 3 of 3: Join us')
+    fireEvent.keyDown(window, { key: 'Backspace' })
+    fireEvent.keyDown(window, { key: 'P' })
+    expect(shown()).toBe('Slide 1 of 3: Who we are')
+    fireEvent.keyDown(window, { key: '3' })
+    expect(shown()).toBe('Slide 1 of 3: Who we are')
+    fireEvent.keyDown(window, { key: 'Enter' })
+    expect(shown()).toBe('Slide 3 of 3: Join us')
+    // Enter on a button presses the button, and doesn't move on as well
+    fireEvent.keyDown(window, { key: 'Home' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'All slides' }), { key: 'Enter' })
+    expect(shown()).toBe('Slide 1 of 3: Who we are')
+  })
+
+  it('blanks the screen white with W, and black with B', () => {
+    render(<Deck slides={slides} bodies={[]} notes={['', '', '']} />)
+    fireEvent.keyDown(window, { key: 'w' })
+    expect(screen.getByRole('status')).toHaveTextContent('Screen white')
+    fireEvent.keyDown(window, { key: 'b' })
+    expect(screen.getByRole('status')).toHaveTextContent('Screen blanked')
+    fireEvent.keyDown(window, { key: 'b' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('picks up the laser pointer and the pen, one at a time, and puts them down with Esc', () => {
+    play()
+    const laser = screen.getByRole('button', { name: 'Laser pointer (L)' })
+    const pen = screen.getByRole('button', { name: 'Pen (D)' })
+    fireEvent.keyDown(window, { key: 'l' })
+    expect(laser).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(pen)
+    expect(laser).toHaveAttribute('aria-pressed', 'false')
+    expect(pen).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(pen).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('leaves the keys alone while someone is typing', () => {
     play()
     const input = document.body.appendChild(document.createElement('input'))
@@ -159,6 +235,8 @@ describe('Playing a presentation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All slides' }))
     const all = screen.getByRole('navigation', { name: 'All slides' })
     expect(within(all).getAllByRole('button')).toHaveLength(3)
+    // Each one drawn small, as it looks
+    expect(within(all).getByText('About What we do')).toBeInTheDocument()
     expect(within(all).getByRole('button', { name: /Who we are/ })).toHaveAttribute('aria-current', 'true')
     fireEvent.click(within(all).getByRole('button', { name: /Join us/ }))
     expect(screen.queryByRole('navigation', { name: 'All slides' })).not.toBeInTheDocument()
@@ -197,7 +275,8 @@ describe('Playing a presentation', () => {
     jest.useFakeTimers()
     render(<Deck slides={slides} bodies={[]} notes={['', '', '']} />)
     const panel = screen.getByRole('complementary', { name: 'Speaker notes' })
-    expect(within(panel).getByText('What we do')).toBeInTheDocument()
+    // The next slide, drawn small, and its title under it
+    expect(within(panel).getAllByText('What we do')).toHaveLength(2)
     act(() => void jest.advanceTimersByTime(65_000))
     expect(within(panel).getByRole('timer')).toHaveTextContent('1:05')
     fireEvent.click(within(panel).getByRole('button', { name: 'Start the clock over' }))
@@ -209,7 +288,7 @@ describe('Playing a presentation', () => {
 
   it('plays by itself when the deck is set to, round and round, until paused', () => {
     jest.useFakeTimers()
-    render(<Deck slides={slides} bodies={[]} settings={{ theme: 'dark', transition: 'none', autoplay: 5 }} />)
+    render(<Deck slides={slides} bodies={[]} settings={deckSettings({ theme: 'dark', transition: 'none', autoplay: 5 })} />)
     expect(screen.getByRole('region', { name: 'Slides' })).toHaveClass('deck-theme-dark')
     act(() => void jest.advanceTimersByTime(6000))
     expect(shown()).toBe('Slide 1 of 3: Who we are')
@@ -230,6 +309,105 @@ describe('Playing a presentation', () => {
     expect(screen.queryByRole('button', { name: /^Play by itself/ })).not.toBeInTheDocument()
   })
 
+  it('puts the deck’s footer, the logo, and the slide’s number along the bottom of a slide', () => {
+    const settings = deckSettings({ footer: 'CSEG · Fall kickoff', numbers: true, logo: true })
+    const { rerender } = render(<SlideThumb slide={{ id: 'a', title: 'Who we are' }} settings={settings} number={4} />)
+    expect(screen.getByText('CSEG · Fall kickoff')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(document.querySelector('img[src*="logo"]')).not.toBeNull()
+    rerender(<SlideThumb slide={{ id: 'a', title: 'Welcome', layout: 'title' }} settings={settings} number={1} />)
+    expect(screen.queryByText('CSEG · Fall kickoff')).not.toBeInTheDocument()
+  })
+
+  it('draws two columns, a comparison’s headings, a quote, and a blank slide', () => {
+    const { rerender } = render(
+      <SlideView slide={{ id: 'a', title: 'Getting here', layout: 'comparison', label: 'Driving', label2: 'MARTA' }} second={<p>Five Points</p>}>
+        <p>Decks fill early</p>
+      </SlideView>
+    )
+    expect(screen.getByRole('heading', { name: 'Driving' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'MARTA' })).toBeInTheDocument()
+    expect(screen.getByText('Five Points')).toBeInTheDocument()
+    rerender(
+      <SlideView slide={{ id: 'a', title: 'A member', layout: 'quote' }}>
+        <p>CSEG is the reason I know where anything is.</p>
+      </SlideView>
+    )
+    expect(screen.getByText('— A member')).toBeInTheDocument()
+    expect(document.querySelector('blockquote')).toHaveTextContent('CSEG is the reason')
+    rerender(
+      <SlideView slide={{ id: 'a', title: 'Not shown', layout: 'blank' }}>
+        <p>Just this</p>
+      </SlideView>
+    )
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+    expect(screen.getByText('Just this')).toBeInTheDocument()
+  })
+
+  it('draws a slide on its own colour, with words that read on it', () => {
+    const { container, rerender } = render(<SlideView slide={{ id: 'a', title: 'Dark', bgColor: '#0b2a6f' }} />)
+    const root = container.firstElementChild as HTMLElement
+    expect(root).toHaveClass('deck-theme-dark')
+    expect(root.style.backgroundColor).toBe('rgb(11, 42, 111)')
+    rerender(<SlideView slide={{ id: 'a', title: 'Light', bgColor: '#ffd166' }} />)
+    expect(container.firstElementChild).toHaveClass('deck-theme-light')
+  })
+
+  it('puts the footer under the words on a phone, where the slide flows', () => {
+    render(<SlideView slide={{ id: 'a', title: 'Who we are' }} chrome={{ footer: 'CSEG', number: 2 }} />)
+    expect(screen.getByText('CSEG')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
+  it('stays on a slide its own time when playing by itself', () => {
+    jest.useFakeTimers()
+    const timed = [{ id: 'a', title: 'One', advance: 10 }, { id: 'b', title: 'Two' }, { id: 'c', title: 'Three' }]
+    render(<Deck slides={timed} bodies={[]} settings={deckSettings({ autoplay: 5, transition: 'none' })} />)
+    const now = () => screen.getByRole('group', { name: /^Slide \d of 3/ }).getAttribute('aria-label')
+    fireEvent.click(screen.getByRole('button', { name: /^Play by itself/ }))
+    act(() => void jest.advanceTimersByTime(6000))
+    expect(now()).toBe('Slide 1 of 3: One')
+    act(() => void jest.advanceTimersByTime(4000))
+    expect(now()).toBe('Slide 2 of 3: Two')
+    act(() => void jest.advanceTimersByTime(5000))
+    expect(now()).toBe('Slide 3 of 3: Three')
+    jest.useRealTimers()
+  })
+
+  it('shows a Play button for a deck whose only times are its slides’ own', () => {
+    render(<Deck slides={[{ id: 'a', title: 'One', advance: 5 }, { id: 'b', title: 'Two' }]} bodies={[]} />)
+    expect(screen.getByRole('button', { name: 'Play by itself, on each slide’s own time' })).toBeInTheDocument()
+  })
+
+  it('arrives as a slide says, whatever the deck does', () => {
+    render(<Deck slides={[{ id: 'a', title: 'One' }, { id: 'b', title: 'Two', transition: 'slide' }]} bodies={[]} settings={deckSettings({ transition: 'fade' })} />)
+    expect(screen.getByRole('group', { name: 'Slide 1 of 2: One' })).toHaveClass('deck-fade')
+    expect(document.querySelector('[aria-label="Slide 2 of 2: Two"]')).toHaveClass('deck-next')
+  })
+
+  it('keeps what’s drawn with its slide, and through a reload', () => {
+    window.localStorage.clear()
+    const first = render(<Deck slides={slides} bodies={[]} />)
+    fireEvent.keyDown(window, { key: 'd' })
+    const ink = () => document.querySelector('svg[viewBox="0 0 1100 620"]')
+    fireEvent.pointerDown(ink()!, { clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerMove(ink()!, { clientX: 9, clientY: 9, pointerId: 1 })
+    fireEvent.pointerUp(ink()!, { pointerId: 1 })
+    expect(ink()!.querySelector('polyline')).not.toBeNull()
+    // On another slide there's nothing drawn
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(ink()).toBeNull()
+    // The page reloads, and the drawing is back on its slide
+    first.unmount()
+    window.history.replaceState(null, '', '/presentations/welcome')
+    render(<Deck slides={slides} bodies={[]} />)
+    expect(ink()?.querySelector('polyline')).not.toBeNull()
+    // Shift+E rubs out every slide's
+    fireEvent.keyDown(window, { key: 'E', shiftKey: true })
+    expect(ink()).toBeNull()
+  })
+
   it('lays a slide out as its layout says', () => {
     const { rerender } = render(<SlideView slide={{ id: 'a', title: 'Campus guides', layout: 'image-right' }}>Words</SlideView>)
     expect(screen.getByText('No picture yet')).toBeInTheDocument()
@@ -238,6 +416,134 @@ describe('Playing a presentation', () => {
     rerender(<SlideView slide={{ id: 'a', title: 'Campus guides', layout: 'image-full', image: 'javascript:alert(1)' }}>Words</SlideView>)
     expect(document.querySelector('img')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Campus guides' })).toBeInTheDocument()
+  })
+
+  it('brings a slide’s points in one at a time, when it’s set to, and takes them back out going back', () => {
+    const stepped = [
+      { id: 'a', title: 'Who we are', reveal: true },
+      { id: 'b', title: 'Join us' },
+    ]
+    render(
+      <Deck
+        slides={stepped}
+        bodies={[
+          <ul key="a">
+            <li>Commuters</li>
+            <li>
+              Officers
+              <ul>
+                <li>From every college</li>
+              </ul>
+            </li>
+          </ul>,
+          <ul key="b">
+            <li>Every other Thursday</li>
+          </ul>,
+        ]}
+      />
+    )
+    const point = (text: string) => screen.getByText(text).closest('li')!
+    const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next slide' }))
+    const previous = () => fireEvent.click(screen.getByRole('button', { name: 'Previous slide' }))
+    expect(point('Commuters')).toHaveClass('deck-step-hidden')
+    expect(point('Officers')).toHaveClass('deck-step-hidden')
+    const shownOf2 = () => screen.getByRole('group', { name: /^Slide \d of 2/ }).getAttribute('aria-label')
+    next()
+    expect(shownOf2()).toBe('Slide 1 of 2: Who we are')
+    expect(point('Commuters')).not.toHaveClass('deck-step-hidden')
+    expect(point('Officers')).toHaveClass('deck-step-hidden')
+    next()
+    // A point's own sub-points come with it
+    expect(point('Officers')).not.toHaveClass('deck-step-hidden')
+    expect(point('From every college')).not.toHaveClass('deck-step-hidden')
+    next()
+    expect(shownOf2()).toBe('Slide 2 of 2: Join us')
+    // A slide that isn't set to shows its points all at once
+    expect(point('Every other Thursday')).not.toHaveClass('deck-step-hidden')
+    expect(screen.getByRole('button', { name: 'Next slide' })).toBeDisabled()
+    previous()
+    expect(shownOf2()).toBe('Slide 1 of 2: Who we are')
+    expect(point('Officers')).not.toHaveClass('deck-step-hidden')
+    previous()
+    expect(point('Officers')).toHaveClass('deck-step-hidden')
+    expect(point('Commuters')).not.toHaveClass('deck-step-hidden')
+  })
+
+  describe('with an audience window', () => {
+    /** BroadcastChannel, between the windows of one test */
+    class Channel {
+      static open = new Set<Channel>()
+      onmessage: ((e: { data: unknown }) => void) | null = null
+      constructor(public name: string) {
+        Channel.open.add(this)
+      }
+      postMessage(data: unknown) {
+        for (const other of Channel.open) if (other !== this && other.name === this.name) other.onmessage?.({ data: JSON.parse(JSON.stringify(data)) })
+      }
+      close() {
+        Channel.open.delete(this)
+      }
+    }
+    const real = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel
+    beforeEach(() => Object.assign(globalThis, { BroadcastChannel: Channel }))
+    afterEach(() => Object.assign(globalThis, { BroadcastChannel: real }))
+
+    const bodies = slides.map((s) => <p key={s.id}>About {s.title}</p>)
+    const slideIn = (deck: HTMLElement) => within(deck).getAllByRole('group', { hidden: true }).find((g) => !g.hidden)?.getAttribute('aria-label')
+
+    it('keeps the projector on the presenter’s slide, and the presenter on the projector’s', () => {
+      render(
+        <>
+          <Deck slides={slides} bodies={bodies} notes={['', '', '']} sync="deck-1" audienceHref="/present/1" />
+          <Deck slides={slides} bodies={bodies} mode="audience" sync="deck-1" />
+        </>
+      )
+      const [presenter, room] = screen.getAllByRole('region', { name: 'Slides' })
+      expect(screen.getByText(/The audience window follows this one/)).toBeInTheDocument()
+      fireEvent.click(within(presenter).getByRole('button', { name: 'Next slide' }))
+      expect(slideIn(room)).toBe('Slide 2 of 3: What we do')
+      // On the projector a click on the slide moves on, and the presenter follows
+      fireEvent.click(within(room).getByText('About What we do'))
+      expect(slideIn(room)).toBe('Slide 3 of 3: Join us')
+      expect(slideIn(presenter)).toBe('Slide 3 of 3: Join us')
+    })
+
+    it('shows the room only the slides: no notes, no controls', () => {
+      render(<Deck slides={slides} bodies={bodies} mode="audience" sync="deck-2" />)
+      expect(screen.queryByRole('complementary', { name: 'Speaker notes' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Next slide' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Full screen' })).toBeInTheDocument()
+    })
+
+    it('shows the room what the presenter draws', () => {
+      render(
+        <>
+          <Deck slides={slides} bodies={bodies} notes={['', '', '']} sync="deck-4" />
+          <Deck slides={slides} bodies={bodies} mode="audience" sync="deck-4" />
+        </>
+      )
+      const [presenter, room] = screen.getAllByRole('region', { name: 'Slides' })
+      fireEvent.click(within(presenter).getByRole('button', { name: 'Pen (D)' }))
+      const ink = presenter.querySelector('svg[viewBox="0 0 1100 620"]')!
+      fireEvent.pointerDown(ink, { clientX: 10, clientY: 10, pointerId: 1 })
+      fireEvent.pointerMove(ink, { clientX: 20, clientY: 20, pointerId: 1 })
+      fireEvent.pointerUp(ink, { pointerId: 1 })
+      expect(room.querySelector('svg[viewBox="0 0 1100 620"] polyline')).not.toBeNull()
+      fireEvent.keyDown(window, { key: 'e' })
+      expect(room.querySelector('svg[viewBox="0 0 1100 620"] polyline')).toBeNull()
+    })
+
+    it('blanks the room’s screen from the presenter’s', () => {
+      render(
+        <>
+          <Deck slides={slides} bodies={bodies} notes={['', '', '']} sync="deck-3" />
+          <Deck slides={slides} bodies={bodies} mode="audience" sync="deck-3" />
+        </>
+      )
+      fireEvent.keyDown(window, { key: 'b' })
+      expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Screen blanked')
+      expect(screen.getByRole('button', { name: 'Show the slides again' })).toBeInTheDocument()
+    })
   })
 
   it('says so when there are no slides', () => {

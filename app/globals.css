@@ -408,8 +408,16 @@
   --muted: #6a5c4b;
 }
 
+/* A slide's points that aren't in yet: kept in their place, so the rest doesn't move as they come */
+.deck-step-hidden {
+  visibility: hidden;
+}
+
 /* How a slide arrives; nothing moves for people who've asked for less motion */
 @media (prefers-reduced-motion: no-preference) {
+  .deck-step-in {
+    animation: deck-fade 0.3s ease-out both;
+  }
   .deck-fade {
     animation: deck-fade 0.35s ease-out both;
   }

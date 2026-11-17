@@ -2,13 +2,14 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { SlideView, themeClass } from '@/(page)/presentations/Deck'
+import { SlideView, Stage } from '@/(page)/presentations/Deck'
 import { SiteContentProvider } from '@/globals/SiteContent'
 import { inlineLink } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 import { getPresentationToPrint, getSiteContent } from '@/lib/dashboard/public'
-import { deckSettings, shownSlides } from '@/lib/presentations'
-import { DocumentBody } from '@/lib/richtext'
+import { deckSettings, shownSlides, slideChrome, themeClass } from '@/lib/presentations'
+import { slideBody } from '@/lib/slideBodies'
+import { toDeckSlide } from '@/lib/presentations'
 
 import { PrintButton } from './PrintButton'
 
@@ -29,7 +30,8 @@ export default async function PrintPresentationPage({ params }: Props) {
   const deck = await getPresentationToPrint((await params).slug)
   if (!deck) notFound()
   const slides = shownSlides(deck.slides)
-  const theme = themeClass(deckSettings(deck.settings).theme)
+  const settings = deckSettings(deck.settings)
+  const theme = themeClass(settings.theme)
   return (
     <SiteContentProvider content={await getSiteContent()}>
       {/* A sheet the shape of a slide, with nothing around it */}
@@ -59,9 +61,11 @@ export default async function PrintPresentationPage({ params }: Props) {
                 theme
               )}
             >
-              <SlideView slide={{ id: s.id, title: s.title, layout: s.layout, image: s.image }} className="h-full">
-                {s.body.trim() ? <DocumentBody source={s.body} className="text-[clamp(1rem,1.6vw,1.2rem)]" /> : null}
-              </SlideView>
+              <Stage fill>
+                <SlideView slide={toDeckSlide(s)} second={slideBody(s.body2)} chrome={slideChrome(settings, i + 1, s.layout)}>
+                  {slideBody(s.body)}
+                </SlideView>
+              </Stage>
             </section>
           ))
         ) : (

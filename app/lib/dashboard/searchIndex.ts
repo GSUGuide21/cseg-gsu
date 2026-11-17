@@ -77,7 +77,7 @@ export async function getDashboardSearchIndex(): Promise<SearchEntry[]> {
       summary: d.description,
       date: d.updated_at,
       meta: joined(DRAFT[d.status], d.visibility !== 'public' && d.visibility, `${Array.isArray(d.slides) ? d.slides.length : 0} slides`),
-      text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, plainText(s.body)]).join('\n'),
+      text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, s.label ?? '', s.label2 ?? '', plainText(s.body), plainText(s.body2 ?? '')]).join('\n'),
     })),
     ...[...events.upcoming, ...events.past].map((e) => ({
       title: e.name,

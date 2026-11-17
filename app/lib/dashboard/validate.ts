@@ -1,5 +1,5 @@
 import { slugify } from '@/components/Form/Slug/slugify'
-import { deckSettings, shownSlides, SLIDE_LAYOUTS } from '@/lib/presentations'
+import { DECK_TRANSITIONS, deckSettings, isHexColor, shownSlides, SLIDE_ADVANCE, SLIDE_LAYOUTS } from '@/lib/presentations'
 import { atlantaToIso } from '@/lib/dashboard/format'
 import { eventSlug } from '@/lib/events'
 import { CONTACT_FIELDS, parseService } from '@/lib/executives'
@@ -160,7 +160,16 @@ export function parseSlides(raw: FormDataEntryValue | null): PresentationSlide[]
     .slice(0, PRESENTATION_SLIDES_MAX)
     .map((s, i) => {
       const layout = SLIDE_LAYOUTS.find((l) => l.value === s.layout)?.value
-      const image = typeof s.image === 'string' && /^https:\/\//.test(s.image.trim()) ? s.image.trim() : ''
+      const https = (v: unknown) => (typeof v === 'string' && /^https:\/\//.test(v.trim()) ? v.trim() : '')
+      const heading = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, SECTION_TITLE_MAX) : '')
+      const image = https(s.image)
+      const bgImage = https(s.bgImage)
+      const transition = DECK_TRANSITIONS.find((t) => t.value === s.transition)?.value
+      const advance = SLIDE_ADVANCE.find((a) => a.value === s.advance)?.value
+      // Kept whatever the layout, so trying another layout doesn't lose the second column
+      const body2 = typeof s.body2 === 'string' ? s.body2 : ''
+      const label = heading(s.label)
+      const label2 = heading(s.label2)
       return {
         id: typeof s.id === 'string' && /^[\w-]{1,64}$/.test(s.id) ? s.id : `slide-${i + 1}`,
         title: typeof s.title === 'string' ? s.title.replace(/\s+/g, ' ').trim().slice(0, SECTION_TITLE_MAX) : '',
@@ -169,6 +178,13 @@ export function parseSlides(raw: FormDataEntryValue | null): PresentationSlide[]
         ...(layout && layout !== 'content' ? { layout } : {}),
         ...(image ? { image } : {}),
         ...(s.hidden === true ? { hidden: true } : {}),
+        ...(s.reveal === true ? { reveal: true } : {}),
+        ...(body2 ? { body2 } : {}),
+        ...(label ? { label } : {}),
+        ...(label2 ? { label2 } : {}),
+        ...(bgImage ? { bgImage } : isHexColor(s.bgColor) ? { bgColor: s.bgColor.toLowerCase() } : {}),
+        ...(transition ? { transition } : {}),
+        ...(advance ? { advance } : {}),
       }
     })
 }

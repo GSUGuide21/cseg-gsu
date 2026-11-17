@@ -8,10 +8,11 @@ import { cn } from '@/lib/cn'
 import { formatDate } from '@/lib/dashboard/format'
 import { getPublishedPresentation, getSiteContent } from '@/lib/dashboard/public'
 import { deckSettings, shownSlides } from '@/lib/presentations'
-import { DocumentBody } from '@/lib/richtext'
 import { hasLiveBlock } from '@/lib/richtext/blocks'
+import { deckContent } from '@/lib/slideBodies'
 
 import { Deck } from '../Deck'
+import { DownloadPptx } from '../DownloadPptx'
 
 // A change in the dashboard refreshes this sooner
 export const revalidate = 300
@@ -33,8 +34,7 @@ export default async function PresentationPage({ params }: Props) {
   const player = (
     <Deck
       settings={deckSettings(deck.settings)}
-      slides={slides.map(({ id, title, layout, image }) => ({ id, title, layout, image }))}
-      bodies={slides.map((s) => (s.body.trim() ? <DocumentBody key={s.id} source={s.body} className="text-[clamp(1rem,1.6vw,1.2rem)]" /> : null))}
+      {...deckContent(slides)}
     />
   )
   return (
@@ -56,12 +56,13 @@ export default async function PresentationPage({ params }: Props) {
         </p>
       </header>
       {/* Blocks that draw from the site (events, eateries) need what the site knows */}
-      {slides.some((s) => hasLiveBlock(s.body)) ? <SiteContentProvider content={await getSiteContent()}>{player}</SiteContentProvider> : player}
+      {slides.some((s) => hasLiveBlock(s.body) || hasLiveBlock(s.body2 ?? '')) ? <SiteContentProvider content={await getSiteContent()}>{player}</SiteContentProvider> : player}
       <p className="m-0 text-[0.85rem] text-muted">
         Use the arrow keys or swipe to move between slides, and F for full screen.{' '}
         <a href={`/presentations/${deck.slug}/print`} className={inlineLink}>
           Print or save as PDF
-        </a>
+        </a>{' '}
+        · <DownloadPptx title={deck.title} slides={slides} settings={deckSettings(deck.settings)} />
       </p>
     </article>
   )

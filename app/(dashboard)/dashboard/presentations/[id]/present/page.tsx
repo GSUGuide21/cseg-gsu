@@ -8,14 +8,16 @@ import { requireOfficer } from '@/lib/dashboard/dal'
 import { getSiteContent } from '@/lib/dashboard/public'
 import { getPresentation, getPresentationNotes } from '@/lib/dashboard/queries'
 import { deckSettings, shownSlides } from '@/lib/presentations'
-import { DocumentBody } from '@/lib/richtext'
+import { deckContent } from '@/lib/slideBodies'
 
 export const metadata = { title: 'Present' }
 
 /**
  * A presentation played in the dashboard, as it was last saved: where officers present the
- * private ones (and try out drafts), since those have no address on the site. Under the
- * slides: the speaker notes, what's next, and a clock.
+ * private ones (and try out drafts), since those have no address on the site. It's the
+ * presenter's view: under the slides, the speaker notes, the next slide, and the clocks, and a
+ * button that opens the slides alone in a window of their own (/present/its-id) for the
+ * projector, which follows this one.
  */
 export default async function PresentPage({ params }: { params: Promise<{ id: string }> }) {
   await requireOfficer()
@@ -33,13 +35,14 @@ export default async function PresentPage({ params }: { params: Promise<{ id: st
       <SiteContentProvider content={await getSiteContent()}>
         <Deck
           settings={deckSettings(deck.settings)}
+          sync={`deck-${deck.id}`}
+          audienceHref={`/present/${deck.id}`}
           notes={slides.map((s) => notes[s.id] ?? '')}
-          slides={slides.map(({ id: slideId, title, layout, image }) => ({ id: slideId, title, layout, image }))}
-          bodies={slides.map((s) => (s.body.trim() ? <DocumentBody key={s.id} source={s.body} className="text-[clamp(1rem,1.6vw,1.2rem)]" /> : null))}
+          {...deckContent(slides)}
         />
       </SiteContentProvider>
       <p className="m-0 text-[0.85rem] text-muted">
-        Arrow keys move between slides, F goes full screen, G shows every slide, and B blanks the screen. The notes, what’s next, and the clock show here, and never full screen.
+        To present on a projector, open the audience window, drag it to the projector, and press F there; keep this window on your own screen for the notes. The arrow keys (or a clicker) move both, from either window. G shows every slide, and B blanks the room’s screen.
       </p>
     </div>
   )

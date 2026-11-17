@@ -29,6 +29,8 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   'pages',
   'posts',
   'presentations',
+  // A presentation's audience window
+  'present',
   'albums',
   'library',
   'opportunities',

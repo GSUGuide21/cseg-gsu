@@ -239,7 +239,7 @@ export async function getSearchIndex(): Promise<SearchEntry[]> {
       summary: d.description,
       date: d.published_at,
       meta: `${Array.isArray(d.slides) ? d.slides.length : 0} slides`,
-      text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, plainText(s.body)]).join('\n'),
+      text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, s.label ?? '', s.label2 ?? '', plainText(s.body), plainText(s.body2 ?? '')]).join('\n'),
     })),
     ...albums.map((a) => ({
       title: a.title,
