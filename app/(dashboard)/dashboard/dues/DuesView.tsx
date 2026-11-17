@@ -5,13 +5,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FC } from 'react'
 
-import { ActionMenu, Avatar, Badge, Button, Dialog, EmptyState, Stat, Table, useNotify } from '@/components'
+import { ActionMenu, Alert, Avatar, Badge, Button, Dialog, EmptyState, Stat, Table, useNotify } from '@/components'
 import { DatePicker, Field, Input, SegmentedControl, Select } from '@/components/Form'
 import { formatDollars } from '@/lib/clubDetails'
 import { downloadCsv } from '@/lib/csv'
 import { deleteDues, saveDues } from '@/lib/dashboard/actions'
 import { formatDate } from '@/lib/dashboard/format'
-import { currentTerm, DUES_METHOD_LABELS, duesSummary } from '@/lib/dashboard/terms'
+import { currentTerm, DUES_METHOD_LABELS, duesSummary, missingTerm } from '@/lib/dashboard/terms'
 import { DUES_METHODS } from '@/lib/dashboard/validate'
 import { atlantaToday } from '@/lib/eateries'
 import type { DuesPaymentRow, MemberRow, TermRow } from '@/lib/supabase/types'
@@ -97,6 +97,8 @@ export const DuesView: FC<{ members: DuesMember[]; terms: TermRow[]; payments: D
   const [editing, setEditing] = useState<Row | null>(null)
   const [dialogKey, setDialogKey] = useState(0)
   const term = terms.find((t) => t.id === termId) ?? null
+  // The term it is by the calendar, when the saved ones don't cover today
+  const missing = missingTerm(terms, atlantaToday())
 
   const title = <PageTitle icon={<Wallet />} title="Dues" description="Who’s paid, a term at a time. Record a payment when someone hands it over." />
   if (!term)
@@ -105,8 +107,8 @@ export const DuesView: FC<{ members: DuesMember[]; terms: TermRow[]; payments: D
         {title}
         <EmptyState
           icon={<Wallet />}
-          title="Add a term first"
-          description={isAdmin ? 'Dues are tracked by term. Add this semester under Settings, and it shows up here.' : 'Dues are tracked by term. Ask an admin to add this semester under Settings.'}
+          title={missing ? `Add ${missing.name} first` : 'Add a term first'}
+          description={`Dues are tracked by term. ${isAdmin ? `Add ${missing?.name ?? 'this semester'} under Settings, and it shows up here.` : `Ask an admin to add ${missing?.name ?? 'this semester'} under Settings.`}`}
           actions={
             isAdmin ? (
               <Button size="sm" href="/dashboard/settings">
@@ -164,6 +166,21 @@ export const DuesView: FC<{ members: DuesMember[]; terms: TermRow[]; payments: D
         }
       />
       <div className="flex flex-col gap-4">
+        {missing ? (
+          <Alert
+            tone="info"
+            title={`${missing.name} isn’t set up as a term yet`}
+            actions={
+              isAdmin ? (
+                <Button size="sm" variant="outline" href="/dashboard/settings">
+                  Add it in Settings
+                </Button>
+              ) : null
+            }
+          >
+            By Georgia State’s calendar it’s {missing.name} (or about to be), so payments recorded now would go under {term.name}. {isAdmin ? 'Add the term first.' : 'Ask an admin to add it.'}
+          </Alert>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-3">
           <Stat label="Paid" value={`${summary.paid} of ${summary.expected}`} description={summary.waived ? `${summary.waived} waived` : term.name} />
           <Stat label="Still to pay" value={summary.expected - summary.paid} description={duesAmount ? `${formatDollars(duesAmount)} each` : undefined} />

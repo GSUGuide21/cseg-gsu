@@ -1,3 +1,4 @@
+import { getTours } from '@/lib/content/public'
 import type { Metadata } from 'next'
 
 import { getConnections, getEateries, getGuidePicks, getPublishedPage, getPublishedPlaces, pageMetadata } from '@/lib/dashboard/public'
@@ -36,12 +37,13 @@ export default async function MapPage({
   const { place, room, category, tour, stop, from, to, stairs, indoor, line } = await searchParams
   // The buildings, the club's own pins, the places to eat, and the skybridges and shortcuts, from the dashboard (the
   // built-in ones, and no club pins, when Supabase isn't set up)
-  const [{ buildings, clubPlaces }, eateries, connections, page, rows] = await Promise.all([
+  const [{ buildings, clubPlaces }, eateries, connections, page, rows, tours] = await Promise.all([
     getPublishedPlaces(),
     getEateries(),
     getConnections(),
     getPublishedPage('map'),
     getGuidePicks('map'),
+    getTours(),
   ])
   // Themed sets of places ("Where to study"), each a link that opens the place on the map above
   const picks = picksFor('map', rows, { places: [...placesWithEateries(eateries, buildings), ...clubPlaces] })
@@ -55,6 +57,7 @@ export default async function MapPage({
         initialCategory={category}
         initialTour={tour}
         initialStop={stop}
+        tours={tours}
         initialFrom={from}
         initialTo={to}
         initialAvoidStairs={stairs === 'avoid'}

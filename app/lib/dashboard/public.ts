@@ -8,13 +8,16 @@ import { EXECUTIVES } from '@/(page)/executives/data'
 import { getUpcomingEvents, type ClubEvent } from '@/lib/data/events'
 import { BUILT_IN_EVENTS, eventFromRow, splitEvents } from '@/lib/events'
 import { executiveFromRow, sortExecutives } from '@/lib/executives'
-import { BUILDINGS_AND_SPACES, type Place, type PlaceCategory } from '@/lib/data/places'
+import { BUILDINGS_AND_SPACES, mapHref, PLACE_CATEGORIES, type Place, type PlaceCategory } from '@/lib/data/places'
 import { applyClosures, areaFromRow, atlantaToday, BUILT_IN_AREAS, eateryFromRow, type Eatery, type EateryArea } from '@/lib/eateries'
 import { BUILT_IN_HOMEPAGE, homepageFrom, type HomepageContent } from '@/lib/homepage'
 import { builtInMeta, withSaved, type PagePath } from '@/lib/pageMeta'
 import type { SiteContent } from '@/lib/references'
 import { BUILT_IN_RESOURCE_GROUPS, BUILT_IN_RESOURCES, resourceFromRow, resourceGroupFromRow, type Resource, type ResourceGroup } from '@/lib/resources'
 import { plainText } from '@/lib/richtext'
+import { getAlbums, getOpportunities, getPolls } from '@/lib/content/public'
+import { opportunityKindLabel } from '@/lib/content/types'
+import { formatDate } from './format'
 import { BUILT_IN_CHROME, menuById, siteChromeFrom, type SiteChrome } from '@/lib/siteChrome'
 import type { NavItem } from '@/globals/config/nav'
 import type { SearchEntry } from '@/lib/search'
@@ -27,6 +30,7 @@ import { pageHref, SITE_PAGES } from '@/lib/sitePages'
 import { createClient, createPublicClient } from '@/lib/supabase/server'
 import { sortSponsors, sponsorActive } from './terms'
 import type { GuideKind, GuidePickRow, AffiliateRow, ClubEventRow, ClubSettingsRow, FaqRow, MapConnectionRow, RedirectRow, SponsorRow, EateryAreaRow, ExecutiveRow, EateryClosureRow, EateryRow, HomepageRow, SiteChromeRow, MapPlaceRow, PageMetaRow, PageRedirectRow, PageRow, PostRow, PresentationRow, ResourceGroupRow, ResourceRow } from '@/lib/supabase/types'
+import { postCategoryLabel } from '@/lib/supabase/types'
 
 /**
  * What the public site reads from the dashboard: published posts, pages, and map pins.
@@ -150,40 +154,147 @@ export const getGuidePicks = cache(async (guide: GuideKind): Promise<GuidePickRo
 })
 
 /** What the site's search looks through */
+/** The site an outside link goes to, for its result: "health.gsu.edu" */
+const hostOf = (href: string) => {
+  try {
+    return /^https?:/i.test(href) ? new URL(href).hostname.replace(/^www\./, '') : null
+  } catch {
+    return null
+  }
+}
+
+/** "Mon, Nov 17 · 5:30 PM", on Atlanta's clock, for an event in the results */
+const whenOf = (iso: string) =>
+  new Date(iso).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/,(?= \d)/, ' ·')
+
+/**
+ * What the site's search looks through: every published page, post, and presentation; the
+ * club's events, albums, opportunities, and polls; the campus's buildings and the club's own
+ * map pins, places to eat, and resources. Each with what a result can show of it: a picture,
+ * a date, and a line of detail.
+ */
 export async function getSearchIndex(): Promise<SearchEntry[]> {
   const supabase = createPublicClient()
-  const [posts, pages, eateries, { resources }, affiliates, decks] = await Promise.all([
-    supabase ? quietly<Pick<PostRow, 'slug' | 'title' | 'excerpt' | 'body'>[]>([], () => supabase.from('posts').select('slug, title, excerpt, body').eq('status', 'published')) : [],
-    supabase ? quietly<Pick<PageRow, 'slug' | 'title' | 'description' | 'body' | 'layout' | 'sections'>[]>([], () => supabase.from('pages').select('slug, title, description, body, layout, sections').eq('status', 'published')) : [],
+  const [posts, pages, eateries, { resources }, affiliates, decks, { upcoming, past }, { buildings, clubPlaces }, albums, opportunities, polls, club] = await Promise.all([
+    supabase
+      ? quietly<Pick<PostRow, 'slug' | 'title' | 'excerpt' | 'body' | 'cover_image_url' | 'published_at' | 'category'>[]>([], () =>
+          supabase.from('posts').select('slug, title, excerpt, body, cover_image_url, published_at, category').eq('status', 'published')
+        )
+      : [],
+    supabase ? quietly<Pick<PageRow, 'slug' | 'title' | 'description' | 'body' | 'layout' | 'sections' | 'share_image_url'>[]>([], () => supabase.from('pages').select('slug, title, description, body, layout, sections, share_image_url').eq('status', 'published')) : [],
     getEateries(),
     getResources(),
     getAffiliates(),
     supabase
-      ? quietly<Pick<PresentationRow, 'slug' | 'title' | 'description' | 'slides'>[]>([], () => supabase.from('presentations').select('slug, title, description, slides').eq('status', 'published').eq('visibility', 'public'))
+      ? quietly<Pick<PresentationRow, 'slug' | 'title' | 'description' | 'slides' | 'published_at'>[]>([], () =>
+          supabase.from('presentations').select('slug, title, description, slides, published_at').eq('status', 'published').eq('visibility', 'public')
+        )
       : [],
+    getEvents(),
+    getPublishedPlaces(),
+    getAlbums(),
+    getOpportunities(),
+    getPolls(),
+    getClubDetails(),
   ])
   const managed = new Set(pages.map((p) => pageHref(p.slug)))
+  // Past events: the last few months' worth, newest first, after what's coming up
+  const recent = past.slice(0, 30)
+  const places = [...(buildings ?? BUILDINGS_AND_SPACES), ...clubPlaces]
   return [
     ...SEARCH_ROUTES.filter((r) => !managed.has(r.href)).map((r) => ({ ...r, kind: 'Page' })),
-    ...affiliates.map((a) => ({ title: a.shortName, href: affiliateHref(a), kind: 'Page', summary: a.summary ?? `A CSEG affiliate: ${a.name}.` })),
+    ...affiliates.map((a) => ({ title: a.shortName, href: affiliateHref(a), kind: 'Page', summary: a.summary ?? `A CSEG affiliate: ${a.name}.`, keywords: [a.name] })),
     ...pages.map((p) => ({
       title: p.title,
       href: pageHref(p.slug),
       kind: 'Page',
       summary: p.description,
+      image: p.share_image_url,
       text: p.layout === 'sections' ? p.sections.flatMap((s) => [s.title, plainText(s.body)]).join('\n') : plainText(p.body),
     })),
-    ...posts.map((p) => ({ title: p.title, href: `/posts/${p.slug}`, kind: 'Post', summary: p.excerpt, text: plainText(p.body) })),
+    ...posts.map((p) => ({
+      title: p.title,
+      href: `/posts/${p.slug}`,
+      kind: 'Post',
+      summary: p.excerpt,
+      image: p.cover_image_url,
+      date: p.published_at,
+      meta: postCategoryLabel(p.category),
+      text: plainText(p.body),
+    })),
+    ...[...upcoming, ...recent].map((e) => ({
+      title: e.name,
+      href: `/events#event-${e.id}`,
+      kind: 'Event',
+      summary: e.description,
+      image: e.imageSrc,
+      date: e.start,
+      meta: [e.cancelled ? 'Cancelled' : null, whenOf(e.start), e.location].filter(Boolean).join(' · '),
+      keywords: e.tags,
+    })),
     ...decks.map((d) => ({
       title: d.title,
       href: `/presentations/${d.slug}`,
       kind: 'Presentation',
       summary: d.description,
+      date: d.published_at,
+      meta: `${Array.isArray(d.slides) ? d.slides.length : 0} slides`,
       text: (Array.isArray(d.slides) ? d.slides : []).flatMap((s) => [s.title, plainText(s.body)]).join('\n'),
     })),
-    ...resources.map((r) => ({ title: r.label, href: r.href, kind: 'Resource', summary: r.description })),
-    ...eateries.map((e) => ({ title: e.name, href: `${SITE_PAGES.eat.path}#${e.id}`, kind: 'Place to eat', summary: e.description, text: e.address })),
+    ...albums.map((a) => ({
+      title: a.title,
+      href: `/albums/${a.slug}`,
+      kind: 'Photos',
+      summary: a.description,
+      image: a.cover_url ?? a.photos[0]?.src,
+      date: a.taken_on,
+      meta: `${a.photos.length} ${a.photos.length === 1 ? 'photo' : 'photos'}`,
+      text: a.photos.map((ph) => [ph.alt, ph.caption].filter(Boolean).join(' ')).join('\n'),
+    })),
+    ...places.map((pl) => ({
+      title: pl.name,
+      href: mapHref(pl),
+      kind: 'On the map',
+      summary: pl.description,
+      meta: [PLACE_CATEGORIES[pl.category]?.label, pl.address].filter(Boolean).join(' · '),
+      keywords: pl.aliases,
+      text: (pl.floors ?? []).flatMap((f) => f.rooms.map((r) => [r.room, r.name].filter(Boolean).join(' '))).join('\n'),
+    })),
+    ...eateries.map((e) => ({ title: e.name, href: `${SITE_PAGES.eat.path}#${e.id}`, kind: 'Place to eat', summary: e.description, meta: [e.status, e.address].filter(Boolean).join(' · '), text: e.hours })),
+    ...resources.map((r) => ({ title: r.label, href: r.href, kind: 'Resource', summary: r.description, meta: hostOf(r.href) })),
+    ...opportunities.map((o) => ({
+      title: o.title,
+      href: '/opportunities',
+      kind: 'Opportunity',
+      summary: o.description,
+      meta: [opportunityKindLabel(o.kind), o.organization, o.deadline ? `Apply by ${formatDate(o.deadline)}` : null].filter(Boolean).join(' · '),
+    })),
+    ...polls.map((p) => ({
+      title: p.title,
+      href: `/polls/${p.slug}`,
+      kind: p.kind === 'quiz' ? 'Quiz' : 'Poll',
+      summary: p.description,
+      meta: `${p.questions.length} ${p.questions.length === 1 ? 'question' : 'questions'}`,
+      text: p.questions.map((q) => q.text).join('\n'),
+    })),
+    // Where else the club is: each network it's on, and its email
+    ...(Object.entries(club.links) as [keyof typeof SOCIALS, string][])
+      .filter(([network, href]) => href && SOCIALS[network])
+      .map(([network, href]) => ({ title: SOCIALS[network].name, href, kind: 'Social', summary: SOCIALS[network].about, icon: network, keywords: SOCIALS[network].words })),
+    { title: 'Email', href: `mailto:${club.contactEmail}`, kind: 'Social', summary: club.contactEmail, icon: 'email', keywords: ['contact', 'mail', 'gmail'] },
   ]
+}
+
+/** The club's networks, as the search names them */
+const SOCIALS: Record<string, { name: string; about: string; words: string[] }> = {
+  instagram: { name: 'Instagram', about: 'Event announcements and photos.', words: ['social', 'photos', 'flyers', 'updates'] },
+  x: { name: 'X (Twitter)', about: 'Quick updates from the club.', words: ['twitter', 'social', 'updates'] },
+  pin: { name: 'PIN', about: 'CSEG on the Panther Involvement Network: RSVP to events.', words: ['panther involvement network', 'gsu', 'rsvp'] },
+  groupme: { name: 'GroupMe', about: 'Chat with members.', words: ['chat', 'group', 'message'] },
+  linktree: { name: 'Linktree', about: 'Every CSEG link in one place.', words: ['links'] },
+  discord: { name: 'Discord', about: 'Chat with members and get help.', words: ['chat', 'community', 'server'] },
+  linkedin: { name: 'LinkedIn', about: 'Club news and professional updates.', words: ['professional', 'career', 'network'] },
+  youtube: { name: 'YouTube', about: 'Videos from the club.', words: ['video', 'videos'] },
 }
 
 /** The site's own pages, as search finds them until officers write their own */
@@ -232,6 +343,17 @@ export async function getPublishedPresentation(slug: string) {
   const supabase = createPublicClient()
   if (!supabase) return null
   return quietly<PresentationRow | null>(null, () => supabase.from('presentations').select('*').eq('status', 'published').eq('slug', slug).maybeSingle())
+}
+
+/**
+ * A slide deck for its print page: the published one, or, for an officer who's signed in,
+ * any of them (a draft or a private one), which the database lets only officers read.
+ */
+export async function getPresentationToPrint(slug: string) {
+  const open = await getPublishedPresentation(slug)
+  if (open) return open
+  const supabase = await createClient()
+  return supabase ? quietly<PresentationRow | null>(null, () => supabase.from('presentations').select('*').eq('slug', slug).maybeSingle()) : null
 }
 
 /** A page: its draft while an officer previews, else the published one */

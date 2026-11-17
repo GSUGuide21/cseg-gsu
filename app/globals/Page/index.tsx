@@ -1,9 +1,10 @@
 import { ChevronDown } from 'lucide-react'
 import type { FC, ReactNode } from 'react'
 
-import { CLUB_OFFERINGS, JOIN_STEPS } from '@/globals/config/club'
 import { card, eyebrow, iconTile } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
+import { BUILT_IN_JOIN_STEPS, BUILT_IN_OFFERINGS, type HomeItem } from '@/lib/homepage'
+import { CARD_ICONS } from '@/lib/richtext/blocks/cards'
 
 export type PageHeaderProps = {
   /** Short label above the title */
@@ -121,24 +122,31 @@ export const Faq: FC<{ items: readonly FaqItem[]; group?: string; className?: st
   </div>
 )
 
-export const OfferingCards: FC<{ className?: string }> = ({ className }) => (
+/** What the club offers, as cards: each with its icon (if it has one), title, and words. The homepage editor sets them. */
+export const OfferingCards: FC<{ items?: readonly HomeItem[]; className?: string }> = ({ items = BUILT_IN_OFFERINGS, className }) => (
   <div className={cn('grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4', className)}>
-    {CLUB_OFFERINGS.map(({ Icon, title, body }) => (
-      <article key={title} className={card({ padded: true })}>
-        <span className={iconTile} aria-hidden>
-          <Icon size={20} strokeWidth={2} />
-        </span>
-        <h3 className="text-[1.05rem] font-bold text-ink">{title}</h3>
-        <p className="text-[0.95rem] leading-[1.65] text-muted">{body}</p>
-      </article>
-    ))}
+    {items.map(({ icon, title, body }, i) => {
+      const Icon = CARD_ICONS[icon]?.Icon
+      return (
+        <article key={i} className={card({ padded: true })}>
+          {Icon ? (
+            <span className={iconTile} aria-hidden>
+              <Icon size={20} strokeWidth={2} />
+            </span>
+          ) : null}
+          <h3 className="text-[1.05rem] font-bold text-ink">{title}</h3>
+          {body ? <p className="text-[0.95rem] leading-[1.65] text-muted">{body}</p> : null}
+        </article>
+      )
+    })}
   </div>
 )
 
-export const JoinSteps: FC<{ className?: string }> = ({ className }) => (
+/** The steps to join, numbered. The homepage editor sets them; the homepage and Join page show them. */
+export const JoinSteps: FC<{ steps?: readonly { title: string; body: string }[]; className?: string }> = ({ steps = BUILT_IN_JOIN_STEPS, className }) => (
   <ol className={cn('grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-x-6 gap-y-4', className)}>
-    {JOIN_STEPS.map((step, i) => (
-      <li key={step.title} className="flex flex-col gap-2 border-t-2 border-line pt-4 first:border-brand">
+    {steps.map((step, i) => (
+      <li key={i} className="flex flex-col gap-2 border-t-2 border-line pt-4 first:border-brand">
         <span className="text-[0.8rem] font-bold text-brand" aria-hidden>
           Step {i + 1}
         </span>

@@ -86,8 +86,10 @@ export type WordmarkProps = {
 }
 
 /**
- * The seal beside the club name, linking home. The script line overlaps the bold line by a
- * negative margin rather than absolute positioning, so the wider of the two sets the width.
+ * The seal beside the club name, linking home. The script line tucks up under the bold line by
+ * a negative margin rather than absolute positioning, so the wider of the two sets the width.
+ * The margin is just enough that the script's tall letters (the E, the G) clear the bold
+ * line's letters rather than cutting through them.
  */
 export const Wordmark: FC<WordmarkProps> = ({ size = 'md', href = '/', priority, className, textClassName, brand }) => {
   const s = WORDMARK_SIZES[size]
@@ -96,7 +98,8 @@ export const Wordmark: FC<WordmarkProps> = ({ size = 'md', href = '/', priority,
       {brand ? <BrandMark brand={brand} size={s.mark} priority={priority} className={s.markClass} /> : <LogoMark size={s.mark} priority={priority} className={s.markClass} />}
       <span className={cn('flex flex-col items-end whitespace-nowrap leading-tight', textClassName)} aria-hidden>
         <span className="font-extrabold tracking-tight uppercase">{brand?.top ?? SITE_LOGO_TOP_TEXT}</span>
-        <span className="yellowtail logo-shadow mt-[-0.9em] text-[0.84em] text-muted transition-colors group-hover:text-brand">
+        {/* In the seal's blue (the dark theme's lighter blue, for dark backgrounds) */}
+        <span className="yellowtail logo-shadow mt-[-0.9em] text-[0.84em] text-brand transition-colors group-hover:text-brand-hover">
           {brand?.bottom ?? SITE_LOGO_BOTTOM_TEXT}
         </span>
       </span>

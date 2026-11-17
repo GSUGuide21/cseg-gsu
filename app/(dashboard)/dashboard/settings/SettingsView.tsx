@@ -7,8 +7,9 @@ import { useState, type ChangeEvent, type FC, type ReactNode } from 'react'
 import { Alert, Avatar, Badge, Button, Dialog, useNotify } from '@/components'
 import { DatePicker, DateRangePicker, Field, Input, SegmentedControl, Switch, TextArea } from '@/components/Form'
 import { deleteTerm, removeOfficer, saveOfficer, saveSettings, saveTerm, updateOfficer } from '@/lib/dashboard/actions'
+import { academicTermOn, type AcademicTerm } from '@/lib/academicTerm'
 import { formatDate } from '@/lib/dashboard/format'
-import { currentTerm } from '@/lib/dashboard/terms'
+import { currentTerm, missingTerm, termToAdd } from '@/lib/dashboard/terms'
 import { SETTINGS_LIMITS, type FieldErrors, type SettingsSection } from '@/lib/dashboard/validate'
 import { atlantaToday, shortDate } from '@/lib/eateries'
 import type { ClubSettingsRow, OfficerRole, OfficerRow, TermRow } from '@/lib/supabase/types'
@@ -294,8 +295,12 @@ const BannerFields: FC<{ settings: ClubSettingsRow | null; errors: FieldErrors }
   )
 }
 
-/** Adds a term, or edits one: its name and its first and last days */
-const TermDialog: FC<{ term: TermRow | null; open: boolean; onClose: () => void }> = ({ term, open, onClose }) => {
+/**
+ * Adds a term, or edits one: its name and its first and last days. A new one starts from the
+ * term the calendar says comes next (`suggested`), its dates estimated, for officers to check.
+ */
+const TermDialog: FC<{ term: TermRow | null; suggested?: AcademicTerm; open: boolean; onClose: () => void }> = ({ term, suggested, open, onClose }) => {
+  const start = term ?? suggested
   const router = useRouter()
   const { pending, errors, run } = useAction()
   const formId = term ? `term-${term.id}` : 'term-new'
@@ -329,10 +334,19 @@ const TermDialog: FC<{ term: TermRow | null; open: boolean; onClose: () => void 
         }}
       >
         <Field label="Name" required error={errors.name}>
-          <Input name="name" defaultValue={term?.name} autoComplete="off" placeholder="Fall 2026" />
+          <Input name="name" defaultValue={start?.name} autoComplete="off" placeholder="Fall 2026" />
         </Field>
-        <Field label="Runs" required error={errors.dates} description="Its first and last days, both included.">
-          <DateRangePicker name="dates" size="sm" defaultValue={term ? { start: term.starts_on, end: term.ends_on } : null} />
+        <Field
+          label="Runs"
+          required
+          error={errors.dates}
+          description={
+            term
+              ? 'Its first and last days, both included.'
+              : 'Its first and last days, both included. Filled in from Georgia State’s usual calendar (first day of classes to the end of finals); check them against the registrar’s.'
+          }
+        >
+          <DateRangePicker name="dates" size="sm" defaultValue={start ? { start: start.starts_on, end: start.ends_on } : null} />
         </Field>
       </form>
     </Dialog>
@@ -349,7 +363,12 @@ const TermsPanel: FC<{ terms: TermRow[]; isAdmin: boolean }> = ({ terms, isAdmin
     setDialogKey((k) => k + 1)
     setEditing(t)
   }
-  const current = currentTerm(terms, atlantaToday())
+  const today = atlantaToday()
+  const current = currentTerm(terms, today)
+  // The term it is by the calendar, when none saved covers today; and what "Add a term" starts from
+  const missing = missingTerm(terms, today)
+  const toAdd = termToAdd(terms, today)
+  const { inSession } = academicTermOn(today)
   return (
     <Panel
       title="Terms"
@@ -363,6 +382,22 @@ const TermsPanel: FC<{ terms: TermRow[]; isAdmin: boolean }> = ({ terms, isAdmin
       }
     >
       <p className="m-0 text-[0.85rem] text-muted">Semesters, by date. Dues are tracked for each one.</p>
+      {missing ? (
+        <Alert
+          tone="info"
+          title={inSession ? `It’s ${missing.name}, which isn’t set up yet` : `${missing.name} is next, and isn’t set up yet`}
+          actions={
+            isAdmin ? (
+              <Button size="sm" leading={<Plus size={15} aria-hidden />} onClick={() => open('new')}>
+                Add {missing.name}
+              </Button>
+            ) : null
+          }
+        >
+          By Georgia State’s usual calendar it runs about {shortDate(missing.starts_on)} to {shortDate(missing.ends_on)}, {missing.year}.{' '}
+          {isAdmin ? 'Add it to track its dues; you can adjust the dates.' : 'An admin can add it here to track its dues.'}
+        </Alert>
+      ) : null}
       {terms.length ? (
         <ul aria-label="Terms" className="m-0 flex list-none flex-col divide-y divide-line p-0">
           {terms.map((t) => (
@@ -408,7 +443,7 @@ const TermsPanel: FC<{ terms: TermRow[]; isAdmin: boolean }> = ({ terms, isAdmin
       ) : (
         <p className="m-0 text-[0.9rem] text-muted">No terms yet. {isAdmin ? 'Add this semester to start tracking dues.' : 'An admin adds them here.'}</p>
       )}
-      <TermDialog key={dialogKey} term={editing === 'new' ? null : editing} open={editing !== null} onClose={() => setEditing(null)} />
+      <TermDialog key={dialogKey} term={editing === 'new' ? null : editing} suggested={toAdd} open={editing !== null} onClose={() => setEditing(null)} />
     </Panel>
   )
 }

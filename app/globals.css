@@ -22,6 +22,14 @@
 :root {
   --brand: #0039a6; /* Georgia State blue */
   --brand-hover: #002d84;
+  /*
+   * Fills behind words (solid buttons, active chips) and the words on them. The same in both
+   * of the site's themes: the dark theme's lighter --brand is for text, too light behind white.
+   * A presentation's theme sets its own, so a solid button shows on its background.
+   */
+  --brand-solid: #0039a6;
+  --brand-solid-hover: #002d84;
+  --on-brand-solid: #ffffff;
   --border-subtle: #e4e7ee;
   --bg: #ffffff;
   --fg: #0f1729;
@@ -54,7 +62,7 @@
 
 /* A halo in the page color, so the script line stays legible where it crosses the bold line */
 @utility logo-shadow {
-  text-shadow: 0 1px 2px var(--bg), 0 0 4px var(--bg);
+  text-shadow: 0 1px 1px var(--bg), 0 0 2px var(--bg);
 }
 
 .dark {
@@ -84,12 +92,10 @@
 @theme inline {
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
-  /*
-   * Fills behind white text (buttons, active chips). Same in both themes: the dark
-   * theme's lighter --brand is for text on dark backgrounds and is too light behind white.
-   */
-  --color-brand-solid: #0039a6;
-  --color-brand-solid-hover: #002d84;
+  /* Fills behind words (buttons, active chips), and the words on them: see --brand-solid */
+  --color-brand-solid: var(--brand-solid);
+  --color-brand-solid-hover: var(--brand-solid-hover);
+  --color-on-brand-solid: var(--on-brand-solid);
   /* brand-solid's partner in gradients: 5.7:1 behind white, same in both themes */
   --color-brand-bright: #1f5fd6;
   --color-ink: var(--fg);
@@ -346,4 +352,91 @@
 ::highlight(rte-find-current) {
   background-color: var(--color-series-4, #facc15);
   color: #111827;
+}
+
+/*
+ * ── Presentations ──
+ * A deck's theme: the same tokens the site is drawn in, set again on the deck, so everything
+ * on its slides (titles, writing, blocks, the controls) follows. "site" has no class: it's
+ * whatever the site is showing.
+ */
+.deck-theme-light {
+  color-scheme: light;
+  --brand: #0039a6;
+  --brand-hover: #002d84;
+  --border-subtle: #e4e7ee;
+  --bg: #ffffff;
+  --fg: #0f1729;
+  --muted: #566074;
+}
+
+.deck-theme-dark {
+  color-scheme: dark;
+  --brand: #6d9bff;
+  --brand-hover: #94b6ff;
+  --border-subtle: #252b38;
+  --bg: #0b0f19;
+  --fg: #f1f4f9;
+  --muted: #a3acbd;
+}
+
+/* Georgia State blue, with a warm accent that reads on it */
+.deck-theme-brand {
+  color-scheme: dark;
+  --brand: #ffd166;
+  --brand-hover: #ffe099;
+  /* Gold buttons, with the deck's blue words on them */
+  --brand-solid: #ffd166;
+  --brand-solid-hover: #ffe099;
+  --on-brand-solid: #0b2a6f;
+  --border-subtle: #2f5fc4;
+  --bg: #0039a6;
+  --fg: #ffffff;
+  --muted: #d3e0ff;
+}
+
+.deck-theme-paper {
+  color-scheme: light;
+  --brand: #9a3412;
+  --brand-hover: #7c2d12;
+  --brand-solid: #9a3412;
+  --brand-solid-hover: #7c2d12;
+  --on-brand-solid: #ffffff;
+  --border-subtle: #e6dcc9;
+  --bg: #fbf6ec;
+  --fg: #2a2118;
+  --muted: #6a5c4b;
+}
+
+/* How a slide arrives; nothing moves for people who've asked for less motion */
+@media (prefers-reduced-motion: no-preference) {
+  .deck-fade {
+    animation: deck-fade 0.35s ease-out both;
+  }
+  .deck-next {
+    animation: deck-next 0.35s ease-out both;
+  }
+  .deck-prev {
+    animation: deck-prev 0.35s ease-out both;
+  }
+}
+
+@keyframes deck-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes deck-next {
+  from {
+    opacity: 0;
+    translate: 6% 0;
+  }
+}
+
+@keyframes deck-prev {
+  from {
+    opacity: 0;
+    translate: -6% 0;
+  }
 }

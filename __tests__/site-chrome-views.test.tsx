@@ -48,19 +48,25 @@ const move = (item: string, key: 'ArrowUp' | 'ArrowDown') => {
 describe('Site chrome, in the dashboard', () => {
   beforeEach(() => jest.clearAllMocks())
 
-  it('is its own sidebar section: Navigation, Search, Header, Footer', () => {
-    const section = navFor(0, 0, 'editor').find((s) => s.label === 'Menus & layout')
+  it('sits in the sidebar’s Site section, with the homepage and media', () => {
+    const section = navFor(0, 0, 'editor').find((s) => s.label === 'Site')
     expect(section?.items.map((i) => [i.label, i.href])).toEqual([
+      ['Homepage', '/dashboard/homepage'],
       ['Navigation', '/dashboard/site/navigation'],
-      ['Search', '/dashboard/site/search'],
       ['Header', '/dashboard/site/header'],
       ['Footer', '/dashboard/site/footer'],
+      ['Search', '/dashboard/site/search'],
+      ['Media', '/dashboard/media'],
     ])
   })
 
-  it('Navigation: edits a menu’s links, saying where the menu shows', async () => {
+  it('Navigation: lists every menu in a tree, and edits the picked one’s links, saying where it shows', async () => {
     wrap(<ChromePartView part="navigation" row={row} />)
-    expect(screen.getByRole('button', { name: 'Main menu', pressed: true })).toBeInTheDocument()
+    const tree = screen.getByRole('tree', { name: 'Menus' })
+    // Every menu is a row; the main menu is picked and open, its links under it
+    expect(within(tree).getAllByRole('treeitem', { expanded: false }).map((el) => el.textContent?.replace(/(Header|Footer|Not shown)$/, ''))).toEqual(['About', 'Map', 'Resources', 'About', 'Campus', 'Resources', 'Get involved', 'Officers'])
+    expect(within(tree).getByRole('treeitem', { name: 'Main menu', selected: true })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(tree).getByRole('treeitem', { name: 'Main menu' })).toHaveAccessibleDescription('Header')
     expect(screen.getByText('Header: Main menu')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
 
@@ -76,21 +82,78 @@ describe('Site chrome, in the dashboard', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('Navigation: opens a link from the tree or its menu’s list, and edits the links under it', async () => {
+    wrap(<ChromePartView part="navigation" row={row} />)
+    const tree = screen.getByRole('tree', { name: 'Menus' })
+    // From the menu's list: About has links under it
+    fireEvent.click(screen.getByRole('button', { name: 'Open About, 6 links under it' }))
+    expect(within(tree).getByRole('treeitem', { name: 'About', selected: true })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('switch', { name: /Links under About/ })).toBeChecked()
+    fireEvent.change(screen.getByLabelText('A line introducing them'), { target: { value: 'Who we are.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Contact' }))
+
+    // From the tree: a link under About, through the trail back up
+    // (The footer has an About menu too; this is the main menu's open About link)
+    fireEvent.click(within(within(tree).getByRole('treeitem', { name: 'About', expanded: true })).getByText('Executives'))
+    expect(screen.getByRole('heading', { name: 'Executives' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Words'), { target: { value: 'Officers' } })
+    // The tree follows, and so does the trail
+    expect(within(tree).getByRole('treeitem', { name: 'Officers', selected: true })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Main menu' }))
+    expect(within(tree).getByRole('treeitem', { name: 'Main menu', selected: true })).toBeInTheDocument()
+    await save()
+
+    const about = sent().content.menus[0].links[1]
+    expect(about.menu.description).toBe('Who we are.')
+    expect(about.menu.links.map((l: { label: string }) => l.label)).toEqual(['About CSEG', 'Officers', 'FAQ', 'Constitution', 'Affiliates'])
+  })
+
   it('Navigation: opens the menu it’s asked for, and adds a new one that isn’t on the site yet', async () => {
     wrap(<ChromePartView part="navigation" row={row} initialMenu="footer-campus" />)
-    expect(screen.getByRole('button', { name: 'Campus', pressed: true })).toBeInTheDocument()
+    const tree = screen.getByRole('tree', { name: 'Menus' })
+    expect(within(tree).getByRole('treeitem', { name: 'Campus', selected: true })).toBeInTheDocument()
     expect(screen.getByText('Footer: Link columns')).toBeInTheDocument()
 
+    // A new menu opens on its first link, ready to fill in
     fireEvent.click(screen.getByRole('button', { name: 'New menu' }))
-    expect(screen.getByText(/Not on the site yet/)).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText(/Menu name/), { target: { value: 'Legal' } })
     fireEvent.change(screen.getByLabelText('Words'), { target: { value: 'Privacy' } })
     fireEvent.change(screen.getByLabelText('Link'), { target: { value: '/privacy' } })
+    fireEvent.click(within(tree).getByText('New menu'))
+    expect(within(tree).getByRole('treeitem', { name: 'New menu' })).toHaveAccessibleDescription('Not shown')
+    expect(screen.getByText(/Not on the site yet/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/Menu name/), { target: { value: 'Legal' } })
     await save()
 
     const added = sent().content.menus.at(-1)
     expect(added).toMatchObject({ name: 'Legal', links: [{ href: '/privacy', label: 'Privacy' }] })
     expect(added.id).toMatch(/^menu-[a-z0-9]+$/)
+  })
+
+  it('Navigation: marks each item the server finds a problem with, in the tree and the list', async () => {
+    actions.saveSiteChrome.mockResolvedValueOnce({ ok: false, errors: { 'menus.0.links.1.menu': 'Add a link under “About”, or turn off links under it.' } })
+    wrap(<ChromePartView part="navigation" row={row} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Join' }))
+    await save()
+    const tree = screen.getByRole('tree', { name: 'Menus' })
+    // The menu and the link both say so, and the menu holding it does in its list
+    expect(within(tree).getByRole('treeitem', { name: 'Main menu' })).toHaveAccessibleDescription('Needs a look')
+    // (The footer has an About menu too; the main menu's About link comes first)
+    const about = within(tree).getAllByRole('treeitem', { name: 'About' })[0]
+    expect(about).toHaveAccessibleDescription('Needs a look')
+    expect(within(tree).getByRole('treeitem', { name: 'Map' })).not.toHaveAccessibleDescription()
+    expect(screen.getByRole('button', { name: 'Open About, 6 links under it' }).parentElement).toHaveTextContent('Needs a look')
+    fireEvent.click(within(about).getAllByText('About')[0])
+    expect(screen.getByText('Add a link under “About”, or turn off links under it.')).toBeInTheDocument()
+  })
+
+  it('Navigation: counts a page that shows a menu in its own header as a place it shows', async () => {
+    const custom = { menus: [...BUILT_IN_CHROME.navigation.menus, { id: 'guides', name: 'Guides menu', links: [{ href: '/guides/parking', label: 'Parking' }] }] }
+    wrap(<ChromePartView part="navigation" row={{ ...row, navigation: custom }} initialMenu="guides" pageMenus={[{ title: 'Guides', menu: 'guides' }, { title: 'Parking', menu: 'guides' }]} />)
+    expect(screen.getByRole('treeitem', { name: 'Guides menu' })).toHaveAccessibleDescription('2 places')
+    expect(screen.getByText('Page: Guides')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove menu' }))
+    // Not "isn't shown anywhere": the pages would quietly lose it
+    expect(await screen.findByText('It’s shown in Page: Guides, Page: Parking, which will go without it once you save.')).toBeInTheDocument()
   })
 
   it('Header: picks the menu for its location, with a preview, and saves the switches', async () => {
@@ -167,7 +230,7 @@ describe('Site chrome, in the dashboard', () => {
     const nav = navFor(0, 0, 'officer')
     const advanced = nav.find((s) => s.label === 'Advanced')
     expect(advanced).toMatchObject({ collapsible: true, defaultOpen: false })
-    expect(advanced?.items.map((i) => i.label)).toEqual(['Page titles', 'Old links', 'Walking shortcuts'])
+    expect(advanced?.items.map((i) => i.label)).toEqual(['Page titles', 'Old links'])
     for (const section of nav.filter((s) => s.label)) expect(section.description).toBeTruthy()
   })
 
@@ -180,6 +243,22 @@ describe('Site chrome, in the dashboard', () => {
 describe('the header, on a page with its own menu', () => {
   const guide = [{ href: '/guides/parking', label: 'Parking' }, { href: '/guides/food', label: 'Food' }]
   const menuLabels = () => within(screen.getByRole('navigation', { name: 'Main' })).getAllByRole('link').map((a) => a.textContent)
+
+  it('leaves out a plain link to the button’s page, but never one with links under it', () => {
+    const links = [
+      { href: '/events', label: 'Events' },
+      { href: '/join', label: 'Join', menu: { description: 'Ways in.', links: [{ href: '/join#steps', label: 'How it works' }, { href: '/dues', label: 'Dues' }] } },
+    ]
+    const joins = () => within(screen.getByRole('navigation', { name: 'Main' })).getAllByText('Join').length
+    // The button is one Join; the menu item with links under it (and its panel) are still there too
+    const { unmount } = render(<Header links={links} header={{ ...BUILT_IN_CHROME.header, cta: { label: 'Join', href: '/join' } }} />)
+    expect(menuLabels()).toContain('Events')
+    expect(joins()).toBeGreaterThan(1)
+    unmount()
+    // A plain link to the button's page is left out: only the button
+    render(<Header links={[{ href: '/events', label: 'Events' }, { href: '/join', label: 'Join' }]} header={{ ...BUILT_IN_CHROME.header, cta: { label: 'Join', href: '/join' } }} />)
+    expect(joins()).toBe(1)
+  })
 
   it('shows that menu instead of the site’s, and the site’s everywhere else', () => {
     // The page being viewed is the mocked path

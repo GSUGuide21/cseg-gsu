@@ -12,10 +12,13 @@ import { cn } from '@/lib/cn'
 import { MediaPicker } from './MediaPicker'
 
 export type ImageFieldProps = {
-  /** The form field its address is sent as */
-  name: string
+  /** The form field its address is sent as; leave out when it's held by `value` instead */
+  name?: string
   label: string
   defaultValue?: string | null
+  /** Held outside, with `onValueChange`, instead of sent with a form */
+  value?: string
+  onValueChange?: (src: string) => void
   error?: string
   description?: string
   /** The preview's shape: wide like an event's picture, or square like a portrait */
@@ -26,8 +29,13 @@ export type ImageFieldProps = {
  * An image for a form, as a post's cover is chosen: upload one, pick one from the media
  * library, or paste its address. Sent with the form as its https address ("" for none).
  */
-export const ImageField: FC<ImageFieldProps> = ({ name, label, defaultValue, error, description, shape = 'wide' }) => {
-  const [src, setSrc] = useState(defaultValue ?? '')
+export const ImageField: FC<ImageFieldProps> = ({ name, label, defaultValue, value, onValueChange, error, description, shape = 'wide' }) => {
+  const [own, setOwn] = useState(defaultValue ?? '')
+  const src = value ?? own
+  const setSrc = (next: string) => {
+    setOwn(next)
+    onValueChange?.(next)
+  }
   const [failed, setFailed] = useState(false)
   const [picking, setPicking] = useState(false)
   const [uploading, setUploading] = useState(false)

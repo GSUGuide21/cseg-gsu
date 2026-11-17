@@ -14,8 +14,8 @@ export const button = tv({
   ],
   variants: {
     variant: {
-      primary: 'border-transparent bg-brand-solid text-white hover:bg-brand-solid-hover',
-      outline: 'border-brand text-brand hover:border-brand-solid hover:bg-brand-solid hover:text-white',
+      primary: 'border-transparent bg-brand-solid text-on-brand-solid hover:bg-brand-solid-hover',
+      outline: 'border-brand text-brand hover:border-brand-solid hover:bg-brand-solid hover:text-on-brand-solid',
     },
     size: {
       sm: 'px-[calc(1.1rem-2px)] py-[calc(0.6rem-2px)] text-[0.85rem]',

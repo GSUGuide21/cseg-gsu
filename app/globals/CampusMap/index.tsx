@@ -162,6 +162,8 @@ export type CampusMapProps = {
   /** Tour to open on load, and its stop, 1-based (from ?tour= and ?stop=) */
   initialTour?: string
   initialStop?: string
+  /** The walking tours, in order; the first is what the Tours tab opens on. Default: the ones built into the site. */
+  tours?: readonly Tour[]
   /** Route to open on load (from ?from=, ?to=, ?stairs=avoid, and ?indoor=prefer) */
   initialFrom?: string
   initialTo?: string
@@ -199,6 +201,7 @@ export const CampusMap: FC<CampusMapProps> = ({
   initialCategory,
   initialTour,
   initialStop,
+  tours = TOURS,
   initialFrom,
   initialTo,
   initialAvoidStairs,
@@ -224,7 +227,7 @@ export const CampusMap: FC<CampusMapProps> = ({
   const findPlace = (id: string | undefined) => placesRef.current.find((p) => p.id === id)
   const isPlaceId = (id?: string): id is string => !!findPlace(id)
 
-  const tourLink = tourFromLink(initialTour, initialStop)
+  const tourLink = tourFromLink(initialTour, initialStop, tours)
   const startsInTour = !!tourLink
   const startsInRoute = isPlaceId(initialFrom) || isPlaceId(initialTo)
 
@@ -238,7 +241,7 @@ export const CampusMap: FC<CampusMapProps> = ({
   const [showShuttleTrip, setShowShuttleTrip] = useState(false)
   const [tilted, setTilted] = useState(false)
   const [router, setRouter] = useState<Router>()
-  const [tour, setTour] = useState(tourLink?.tour ?? TOURS[0])
+  const [tour, setTour] = useState(tourLink?.tour ?? tours[0] ?? TOURS[0])
   const [tourStep, setTourStep] = useState(tourLink?.step ?? 0)
   const [query, setQuery] = useState('')
   const [categories, setCategories] = useState<ReadonlySet<PlaceCategory>>(
@@ -936,6 +939,7 @@ export const CampusMap: FC<CampusMapProps> = ({
 
         {mode === 'tour' ? (
           <TourPanel
+            tours={tours}
             tour={tour}
             stops={tourStops}
             onTour={pickTour}

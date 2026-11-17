@@ -27,7 +27,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
   return (
     <ClubDetailsProvider details={details}>
       <PreviewBanner />
-      <Header pages={nav.header} links={headerLinks(chrome)} pageMenus={pageMenus} header={chrome.header} />
+      <Header pages={nav.header} links={headerLinks(chrome)} pageMenus={pageMenus} header={chrome.header} search={chrome.search} />
       <main className="min-h-screen pt-header">
         <SiteBanner />
         {children}

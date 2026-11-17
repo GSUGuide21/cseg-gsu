@@ -7,7 +7,7 @@ import { atlantaToday } from '@/lib/eateries'
 import { CHROME_PARTS, missingMenus, navigationFrom } from '@/lib/siteChrome'
 import { isReservedSlug, isSitePage } from '@/lib/sitePages'
 import { createPublicClient } from '@/lib/supabase/server'
-import type { DocumentCommentRow, PageRow, PostRow, SiteChromeRow } from '@/lib/supabase/types'
+import type { DocumentCommentRow, PageRow, PostRow, PresentationRow, SiteChromeRow } from '@/lib/supabase/types'
 
 import { requireAdmin, requireOfficer, requireStaff } from './dal'
 import { formatDate } from './format'
@@ -301,8 +301,12 @@ export async function duplicateDocument(kind: 'post' | 'page' | 'presentation', 
   } else if (kind === 'presentation') {
     const { data: deck } = await supabase.from('presentations').select('*').eq('id', id).maybeSingle()
     if (!deck) return { ok: false, error: 'That presentation is gone.' }
-    const { slug, title, description, slides, visibility } = deck
-    result = await insert({ slug, title }, { description, slides, visibility, author_name: officer.name })
+    const { slug, title, description, slides, visibility, settings } = deck
+    result = await insert({ slug, title }, { description, slides, visibility, settings, author_name: officer.name })
+    // Its speaker notes come along
+    const copyId = (result.data as { id: string } | null)?.id
+    const { data: noted } = await supabase.from('presentation_notes').select('notes').eq('presentation_id', id).maybeSingle()
+    if (copyId && noted) await supabase.from('presentation_notes').upsert({ presentation_id: copyId, notes: noted.notes })
   } else {
     const { data: page } = await supabase.from('pages').select('*').eq('id', id).maybeSingle()
     if (!page) return { ok: false, error: 'That page is gone.' }
@@ -344,14 +348,16 @@ export async function savePresentation(id: string | null, form: FormData): Promi
   const { supabase, officer } = await requireOfficer()
   const parsed = parsePresentation(form)
   if (!parsed.ok) return parsed
-  const { title, status } = parsed.data
-  // Dated when it first goes up; one taken down and put back keeps its first date
+  const { notes, ...row } = parsed.data
+  const { title, status, publish_at } = row
+  // Dated when it first goes up (or is set to); one taken down and put back keeps its first date
   let publishedAt: string | undefined
   if (status === 'published') {
     const existing = id ? (await supabase.from('presentations').select('published_at').eq('id', id).maybeSingle()).data : null
-    publishedAt = existing?.published_at ?? new Date().toISOString()
+    const wentUp = existing?.published_at && Date.parse(existing.published_at) <= Date.now() ? existing.published_at : null
+    publishedAt = wentUp ?? publish_at ?? new Date().toISOString()
   }
-  const values = { ...parsed.data, updated_by: officer.email, ...(publishedAt ? { published_at: publishedAt } : {}), ...(id ? {} : { author_name: officer.name }) }
+  const values = { ...row, updated_by: officer.email, ...(publishedAt ? { published_at: publishedAt } : {}), ...(id ? {} : { author_name: officer.name }) }
   const expected = id ? loadedAt(form) : null
   const { data, error } = !id
     ? await supabase.from('presentations').insert(values).select('id, updated_at').single()
@@ -366,9 +372,12 @@ export async function savePresentation(id: string | null, form: FormData): Promi
     const name = now.updated_by?.split('@')[0] ?? 'Someone else'
     return { ok: false, error: `${name} saved this presentation after you opened it, so yours wasn’t saved over theirs.`, conflict: { name, at: now.updated_at } }
   }
+  // Speaker notes live apart from the slides, where only officers can read them
+  const noted = await supabase.from('presentation_notes').upsert({ presentation_id: data.id, notes })
   await log(supabase, id ? (status === 'published' ? 'updated presentation' : 'saved draft') : 'created presentation', title)
   revalidateSite()
-  return { ok: true, id: data.id, updatedAt: data.updated_at, message: status === 'published' ? 'Published' : 'Draft saved' }
+  const message = savedMessage(status, publish_at)
+  return { ok: true, id: data.id, updatedAt: data.updated_at, message: noted.error && Object.keys(notes).length ? `${message}, but the speaker notes didn’t save` : message }
 }
 
 export async function deletePresentation(id: string): Promise<void> {
@@ -382,15 +391,21 @@ export async function deletePresentation(id: string): Promise<void> {
 // ── Revisions ───────────────────────────────────────────────────────────────
 
 // The two tables are the same shape; the client's types follow one table at a time, hence the casts below
-const REVISIONS = { page: { table: 'page_revisions', key: 'page_id' }, post: { table: 'post_revisions', key: 'post_id' } } as const
+const REVISIONS = {
+  page: { table: 'page_revisions', key: 'page_id' },
+  post: { table: 'post_revisions', key: 'post_id' },
+  presentation: { table: 'presentation_revisions', key: 'presentation_id' },
+} as const
+
+export type RevisionKind = keyof typeof REVISIONS
 
 /** What a restore brings back: the writing, not the web address or whether it's published */
-const RESTORED = { page: ['title', 'description', 'subtitle', 'layout', 'sections', 'body', 'eyebrow', 'share_image_url', 'show_toc', 'show_updated'], post: ['title', 'excerpt', 'body', 'cover_image_url'] } as const
+const RESTORED = { page: ['title', 'description', 'subtitle', 'layout', 'sections', 'body', 'eyebrow', 'share_image_url', 'show_toc', 'show_updated'], post: ['title', 'excerpt', 'body', 'cover_image_url'], presentation: ['title', 'description', 'slides', 'settings'] } as const
 
 export type RevisionSummary = { id: string; saved_at: string; saved_by: string | null; title: string | null; status: string | null }
 
 /** A page's or post's saved versions, newest first, without their writing (that's getRevision's) */
-export async function listRevisions(kind: 'page' | 'post', docId: string): Promise<RevisionSummary[]> {
+export async function listRevisions(kind: RevisionKind, docId: string): Promise<RevisionSummary[]> {
   const { supabase } = await requireOfficer()
   const { table, key } = REVISIONS[kind]
   const { data, error } = await supabase
@@ -403,7 +418,7 @@ export async function listRevisions(kind: 'page' | 'post', docId: string): Promi
 }
 
 /** One saved version, all of it */
-export async function getRevision(kind: 'page' | 'post', revisionId: string) {
+export async function getRevision(kind: RevisionKind, revisionId: string) {
   const { supabase } = await requireOfficer()
   const { data, error } = await supabase.from(REVISIONS[kind].table).select('snapshot').eq('id', revisionId).maybeSingle()
   if (error) throw new Error(error.message)
@@ -411,7 +426,7 @@ export async function getRevision(kind: 'page' | 'post', revisionId: string) {
 }
 
 /** Puts a saved version's writing back. That's a save too, so it can itself be undone from the history. */
-export async function restoreRevision(kind: 'page' | 'post', docId: string, revisionId: string): Promise<ActionResult> {
+export async function restoreRevision(kind: RevisionKind, docId: string, revisionId: string): Promise<ActionResult> {
   const { supabase, officer } = await requireOfficer()
   const { table, key } = REVISIONS[kind]
   const { data: revision } = await supabase.from(table as 'page_revisions').select('snapshot').eq('id', revisionId).eq(key as 'page_id', docId).maybeSingle()
@@ -421,9 +436,11 @@ export async function restoreRevision(kind: 'page' | 'post', docId: string, revi
   const { data, error } =
     kind === 'page'
       ? await supabase.from('pages').update({ ...values, updated_by: officer.email } as Partial<PageRow>).eq('id', docId).select('slug, title').single()
-      : await supabase.from('posts').update(values as Partial<PostRow>).eq('id', docId).select('slug, title').single()
+      : kind === 'presentation'
+        ? await supabase.from('presentations').update({ ...values, updated_by: officer.email } as Partial<PresentationRow>).eq('id', docId).select('slug, title').single()
+        : await supabase.from('posts').update(values as Partial<PostRow>).eq('id', docId).select('slug, title').single()
   if (error) return failure(error)
-  await log(supabase, `restored an earlier version of ${kind === 'page' ? 'page' : 'post'}`, data.title)
+  await log(supabase, `restored an earlier version of ${kind}`, data.title)
   revalidateSite()
   return { ok: true, message: 'Restored' }
 }
@@ -824,6 +841,8 @@ export async function saveHomepage(form: FormData): Promise<ActionResult> {
   if (error) return failure(error)
   await log(supabase, 'updated the homepage')
   revalidatePath('/')
+  // The Join page shows the homepage's steps to join
+  revalidatePath('/join')
   revalidatePath('/dashboard/homepage')
   return { ok: true, message: 'Saved and on the homepage' }
 }

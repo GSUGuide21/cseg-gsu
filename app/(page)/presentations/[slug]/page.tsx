@@ -7,6 +7,7 @@ import { inlineLink, pageShell } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
 import { formatDate } from '@/lib/dashboard/format'
 import { getPublishedPresentation, getSiteContent } from '@/lib/dashboard/public'
+import { deckSettings, shownSlides } from '@/lib/presentations'
 import { DocumentBody } from '@/lib/richtext'
 import { hasLiveBlock } from '@/lib/richtext/blocks'
 
@@ -27,10 +28,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PresentationPage({ params }: Props) {
   const deck = await getPublishedPresentation((await params).slug)
   if (!deck) notFound()
-  const slides = Array.isArray(deck.slides) ? deck.slides : []
+  // The show: every slide but the hidden ones
+  const slides = shownSlides(deck.slides)
   const player = (
     <Deck
-      slides={slides.map(({ id, title }) => ({ id, title }))}
+      settings={deckSettings(deck.settings)}
+      slides={slides.map(({ id, title, layout, image }) => ({ id, title, layout, image }))}
       bodies={slides.map((s) => (s.body.trim() ? <DocumentBody key={s.id} source={s.body} className="text-[clamp(1rem,1.6vw,1.2rem)]" /> : null))}
     />
   )
@@ -54,7 +57,12 @@ export default async function PresentationPage({ params }: Props) {
       </header>
       {/* Blocks that draw from the site (events, eateries) need what the site knows */}
       {slides.some((s) => hasLiveBlock(s.body)) ? <SiteContentProvider content={await getSiteContent()}>{player}</SiteContentProvider> : player}
-      <p className="m-0 text-[0.85rem] text-muted">Use the arrow keys or swipe to move between slides, and F for full screen.</p>
+      <p className="m-0 text-[0.85rem] text-muted">
+        Use the arrow keys or swipe to move between slides, and F for full screen.{' '}
+        <a href={`/presentations/${deck.slug}/print`} className={inlineLink}>
+          Print or save as PDF
+        </a>
+      </p>
     </article>
   )
 }

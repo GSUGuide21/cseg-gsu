@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation'
 
+import { SiteContentProvider } from '@/globals/SiteContent'
 import { requireOfficer } from '@/lib/dashboard/dal'
-import { getPresentation } from '@/lib/dashboard/queries'
+import { getSiteContent } from '@/lib/dashboard/public'
+import { getPresentation, getPresentationNotes } from '@/lib/dashboard/queries'
 
 import { PresentationEditor } from '../PresentationEditor'
 
@@ -12,7 +14,11 @@ export default async function EditPresentationPage({ params }: { params: Promise
   const { id } = await params
   // Not a uuid: no such presentation (and Postgres would reject the lookup anyway)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
-  const doc = await getPresentation(id)
+  const [doc, notes] = await Promise.all([getPresentation(id), getPresentationNotes(id)])
   if (!doc) notFound()
-  return <PresentationEditor doc={doc} />
+  return (
+    <SiteContentProvider content={await getSiteContent()}>
+      <PresentationEditor doc={doc} notes={notes} />
+    </SiteContentProvider>
+  )
 }

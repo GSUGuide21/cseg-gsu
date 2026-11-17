@@ -1,5 +1,6 @@
 import { BUILT_IN_CLUB_DETAILS, clubDetailsFrom, formatDollars } from '@/lib/clubDetails'
-import { currentTerm, duesSummary, inTerm, overlappingTerm, sortSponsors, sponsorActive } from '@/lib/dashboard/terms'
+import { academicTermOn, nextTerm, termDates } from '@/lib/academicTerm'
+import { currentTerm, duesSummary, inTerm, missingTerm, overlappingTerm, sortSponsors, sponsorActive, termToAdd } from '@/lib/dashboard/terms'
 import { parseDues, parseFaq, parseJoinRequest, parseMinutes, parseOfficer, parseRedirect, parseRsvp, parseSettings, parseSponsor, parseTerm, redirectPathFrom } from '@/lib/dashboard/validate'
 
 const form = (fields: Record<string, string | string[]>) => {
@@ -203,5 +204,39 @@ describe('questions, redirects, minutes, and sponsors, as typed', () => {
       { name: 'D', tier: 'partner' as const, sort: 10 },
     ])
     expect(sorted.map((s) => s.name)).toEqual(['A', 'D', 'C', 'B'])
+  })
+})
+
+describe('the academic term, from the calendar', () => {
+  it('estimates each term’s first day of classes and end of finals', () => {
+    expect(termDates('Spring', 2026)).toMatchObject({ name: 'Spring 2026', starts_on: '2026-01-12', ends_on: '2026-05-08' })
+    expect(termDates('Summer', 2026)).toMatchObject({ starts_on: '2026-05-18', ends_on: '2026-08-07' })
+    expect(termDates('Fall', 2026)).toMatchObject({ starts_on: '2026-08-24', ends_on: '2026-12-11' })
+    expect(termDates('Fall', 2025)).toMatchObject({ starts_on: '2025-08-25', ends_on: '2025-12-12' })
+  })
+
+  it('says which term a day is in, counting a break toward the term just finished', () => {
+    expect(academicTermOn('2026-11-17')).toMatchObject({ term: { name: 'Fall 2026' }, inSession: true, next: { name: 'Spring 2027' } })
+    // Winter break, either side of New Year's: still the fall
+    expect(academicTermOn('2026-12-28')).toMatchObject({ term: { name: 'Fall 2026' }, inSession: false })
+    expect(academicTermOn('2027-01-04')).toMatchObject({ term: { name: 'Fall 2026' }, inSession: false, next: { name: 'Spring 2027' } })
+    expect(academicTermOn('2027-01-11').term.name).toBe('Spring 2027')
+    expect(academicTermOn('2026-05-12')).toMatchObject({ term: { name: 'Spring 2026' }, inSession: false, next: { name: 'Summer 2026' } })
+    expect(academicTermOn('2026-06-30').term.name).toBe('Summer 2026')
+    expect(nextTerm({ season: 'Summer', year: 2026 }).name).toBe('Fall 2026')
+  })
+
+  it('suggests the term the saved ones are missing, and what to add next', () => {
+    const fall = { id: 'f', name: 'Fall 2026', starts_on: '2026-08-20', ends_on: '2026-12-15' }
+    // Nothing saved: the term it is
+    expect(missingTerm([], '2026-11-17')?.name).toBe('Fall 2026')
+    // Saved, under any dates: nothing missing
+    expect(missingTerm([fall], '2026-11-17')).toBeNull()
+    // On winter break, with the fall saved: the spring coming up
+    expect(missingTerm([fall], '2026-12-28')?.name).toBe('Spring 2027')
+    // A saved term by another name that runs into it counts too
+    expect(missingTerm([{ ...fall, name: 'Autumn' }], '2026-11-17')).toBeNull()
+    expect(termToAdd([fall], '2026-11-17').name).toBe('Spring 2027')
+    expect(termToAdd([], '2026-11-17').name).toBe('Fall 2026')
   })
 })

@@ -124,24 +124,31 @@ const menuLinks = (v: unknown): NavMenuLink[] =>
     ? v.filter(isObject).map((l) => ({ href: str(l.href, ''), label: str(l.label, ''), ...(typeof l.description === 'string' && l.description ? { description: l.description } : {}) }))
     : []
 
-/** The links in a saved menu: anything that isn't a link drops, and so does a set of sub-links with nothing in it */
-const navItems = (v: unknown): NavItem[] =>
+/**
+ * The links in a saved menu: anything that isn't a link drops, and so does a set of sub-links
+ * with nothing in it (the site has nothing to open). Read to be checked (`keepEmpty`), an
+ * empty set stays, so the officer is told rather than it quietly going.
+ */
+const navItems = (v: unknown, keepEmpty = false): NavItem[] =>
   Array.isArray(v)
     ? v.filter(isObject).map((l): NavItem => {
         const sub = isObject(l.menu) ? menuLinks(l.menu.links) : []
-        return { href: str(l.href, ''), label: str(l.label, ''), ...(isObject(l.menu) && sub.length ? { menu: { description: str(l.menu.description, ''), links: sub } } : {}) }
+        return { href: str(l.href, ''), label: str(l.label, ''), ...(isObject(l.menu) && (sub.length || keepEmpty) ? { menu: { description: str(l.menu.description, ''), links: sub } } : {}) }
       })
     : []
 
-/** Saved menus replace the built-in ones whole (they're the officers' now); none saved keeps the built-in */
-export function navigationFrom(saved: unknown): NavigationContent {
+/**
+ * Saved menus replace the built-in ones whole (they're the officers' now); none saved keeps
+ * the built-in. `keepEmpty` is for checking what's about to be saved (see navItems).
+ */
+export function navigationFrom(saved: unknown, keepEmpty = false): NavigationContent {
   const base = BUILT_IN_CHROME.navigation
   if (!isObject(saved) || !Array.isArray(saved.menus)) return base
   const menus: NavMenu[] = []
   for (const m of saved.menus.filter(isObject)) {
     // A menu needs an id of its own for a location to point at
     if (typeof m.id !== 'string' || !m.id || menus.some((x) => x.id === m.id)) continue
-    menus.push({ id: m.id, name: str(m.name, ''), links: navItems(m.links) })
+    menus.push({ id: m.id, name: str(m.name, ''), links: navItems(m.links, keepEmpty) })
   }
   return menus.length ? { menus } : base
 }
@@ -206,6 +213,13 @@ export const menuById = (navigation: NavigationContent, id: string | null): NavM
 /** The header's menu; the built-in one if the menu it was given is gone, so the site always has a way around */
 export const headerLinks = (chrome: Pick<SiteChrome, 'navigation' | 'header'>): readonly NavItem[] => (menuById(chrome.navigation, chrome.header.menu) ?? BUILT_IN_CHROME.navigation.menus[0]).links
 
+/**
+ * The header's links with the button's page left out, so it isn't there twice. Only a plain
+ * link to it goes: one with links under it stays, as the button can't stand in for them.
+ */
+export const withoutButtonPage = (links: readonly NavItem[], button: HomeButton | null): NavItem[] =>
+  button ? links.filter((l) => l.menu?.links.length || l.href.trim() !== button.href.trim()) : [...links]
+
 const flat = (links: readonly NavItem[]): NavLink[] => links.map(({ href, label }) => ({ href, label }))
 
 /** The footer's columns, a menu each under its name; one whose menu is gone, or has no links, is left out */
@@ -218,11 +232,15 @@ export const footerColumns = (chrome: Pick<SiteChrome, 'navigation' | 'footer'>)
 /** The footer's bottom bar links, if it has a menu */
 export const footerBottomLinks = (chrome: Pick<SiteChrome, 'navigation' | 'footer'>): NavLink[] => flat(menuById(chrome.navigation, chrome.footer.bottom)?.links ?? [])
 
-/** Where a menu shows: "Header: Main menu", "Footer: Link columns" */
-export const menuUses = (chrome: Pick<SiteChrome, 'header' | 'footer'>, id: string): string[] => [
+/** A page that shows one of the menus across its own top (Pages, "Header menu on this page") */
+export type PageMenuUse = { title: string; menu: string }
+
+/** Where a menu shows: "Header: Main menu", "Footer: Link columns", and "Page: Guides" for each page that picked it */
+export const menuUses = (chrome: Pick<SiteChrome, 'header' | 'footer'>, id: string, pages: readonly PageMenuUse[] = []): string[] => [
   ...(chrome.header.menu === id ? [`Header: ${MENU_LOCATIONS['header.menu'].name}`] : []),
   ...(chrome.footer.columns.includes(id) ? [`Footer: ${MENU_LOCATIONS['footer.columns'].name}`] : []),
   ...(chrome.footer.bottom === id ? [`Footer: ${MENU_LOCATIONS['footer.bottom'].name}`] : []),
+  ...pages.filter((p) => p.menu === id).map((p) => `Page: ${p.title || 'Untitled page'}`),
 ]
 
 /** The menus a part's locations point at that aren't there (any more), by the field that names them */
@@ -278,7 +296,8 @@ export function navigationErrors(c: NavigationContent): Errors {
       checkLink(errors, `${at}.links.${i}`, l)
       if (!l.menu) return
       optional(errors, `${at}.links.${i}.menu.description`, l.menu.description, 160)
-      if (l.menu.links.length > CHROME_LIMITS.subLinks) errors[`${at}.links.${i}.menu`] = `Keep it to ${CHROME_LIMITS.subLinks} links under “${l.label}”.`
+      if (!l.menu.links.length) errors[`${at}.links.${i}.menu`] = `Add a link under “${l.label || 'this link'}”, or turn off links under it.`
+      else if (l.menu.links.length > CHROME_LIMITS.subLinks) errors[`${at}.links.${i}.menu`] = `Keep it to ${CHROME_LIMITS.subLinks} links under “${l.label}”.`
       l.menu.links.forEach((s, j) => {
         checkLink(errors, `${at}.links.${i}.menu.links.${j}`, s)
         optional(errors, `${at}.links.${i}.menu.links.${j}.description`, s.description ?? '', 120)

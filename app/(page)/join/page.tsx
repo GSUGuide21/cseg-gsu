@@ -3,10 +3,13 @@ import Link from 'next/link'
 
 import { ManagedPage, managedPageMetadata } from '@/globals/Page/ManagedPage'
 import { formatDollars, type ClubDetails } from '@/lib/clubDetails'
-import { getClubDetails, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
+import { getClubDetails, getHomepage, getPublishedPage, pageMetadata } from '@/lib/dashboard/public'
+import type { HomeItem } from '@/lib/homepage'
 import { SITE_PAGES } from '@/lib/sitePages'
 import { JoinSteps, PageBlock, PageCallout, PageHeader } from '@/globals/Page'
 import { button, card, pageShell } from '@/globals/ui/styles'
+
+import { Testimonials } from '@/globals/Testimonials'
 
 import { JoinForm } from './JoinForm'
 
@@ -41,7 +44,7 @@ const RequestBlock = ({ details: { acceptingMembers, duesAmount, contactEmail } 
   </PageBlock>
 )
 
-function JoinContent({ details }: { details: ClubDetails }) {
+function JoinContent({ details, steps }: { details: ClubDetails; steps?: HomeItem[] }) {
   const { meetingInfo, links } = details
   return (
     <div className={pageShell}>
@@ -59,10 +62,12 @@ function JoinContent({ details }: { details: ClubDetails }) {
       </PageHeader>
 
       <PageBlock title="How it works">
-        <JoinSteps />
+        <JoinSteps steps={steps} />
       </PageBlock>
 
       <RequestBlock details={details} />
+
+      <Testimonials />
 
       {meetingInfo ? (
         <PageBlock title="When and where we meet">
@@ -95,6 +100,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** The Join page officers wrote in the dashboard, once it's published; the one above until then */
 export default async function JoinPage() {
-  const [page, details] = await Promise.all([getPublishedPage('join'), getClubDetails()])
-  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.join.eyebrow} after={<RequestBlock details={details} />} /> : <JoinContent details={details} />
+  const [page, details, homepage] = await Promise.all([getPublishedPage('join'), getClubDetails(), getHomepage()])
+  // The steps to join, as the homepage editor has them
+  const steps = homepage.sections.find((s) => s.id === 'join')?.items
+  return page ? <ManagedPage page={page} eyebrow={SITE_PAGES.join.eyebrow} after={<RequestBlock details={details} />} /> : <JoinContent details={details} steps={steps} />
 }

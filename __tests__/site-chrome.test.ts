@@ -1,6 +1,6 @@
 import { FOOTER_NAV_SECTIONS, NAV_LINKS } from '@/globals/config/nav'
 import { parseDocument, parseSiteChrome } from '@/lib/dashboard/validate'
-import { BUILT_IN_CHROME, footerBottomLinks, footerColumns, footerFrom, headerFrom, headerLinks, menuUses, missingMenus, navigationFrom, searchFrom, siteChromeFrom } from '@/lib/siteChrome'
+import { BUILT_IN_CHROME, footerBottomLinks, footerColumns, footerFrom, headerFrom, headerLinks, menuUses, missingMenus, navigationFrom, searchFrom, siteChromeFrom, withoutButtonPage } from '@/lib/siteChrome'
 
 const form = (part: string, content: unknown) => {
   const f = new FormData()
@@ -71,6 +71,25 @@ describe('menu locations', () => {
     expect(footerBottomLinks(chrome)).toEqual([{ href: '/privacy', label: 'Privacy' }])
   })
 
+  it('count each page that shows a menu across its own top as a place it shows', () => {
+    const pages = [
+      { title: 'Guides', menu: 'help' },
+      { title: '', menu: 'help' },
+      { title: 'Elsewhere', menu: 'top' },
+    ]
+    expect(menuUses(chrome, 'help', pages)).toEqual(['Footer: Link columns', 'Page: Guides', 'Page: Untitled page'])
+    expect(menuUses(chrome, 'legal', pages)).toEqual(['Footer: Bottom bar'])
+  })
+
+  it('leave the button’s page out of the header only when it’s a plain link there', () => {
+    const join = { href: '/join', label: 'Join', menu: { description: '', links: [{ href: '/join#steps', label: 'Steps' }] } }
+    const links = [{ href: '/events', label: 'Events' }, { href: ' /join ', label: 'Join us' }, join]
+    expect(withoutButtonPage(links, { label: 'Join', href: '/join' }).map((l) => l.label)).toEqual(['Events', 'Join'])
+    expect(withoutButtonPage(links, null)).toEqual(links)
+    // A link whose links-under were all taken out is plain again
+    expect(withoutButtonPage([{ ...join, menu: { description: '', links: [] } }], { label: 'Join', href: '/join' })).toEqual([])
+  })
+
   it('say where a menu shows, and which of a part’s menus are missing', () => {
     expect(menuUses(chrome, 'top')).toEqual(['Header: Main menu', 'Footer: Link columns'])
     expect(menuUses(chrome, 'legal')).toEqual(['Footer: Bottom bar'])
@@ -101,6 +120,9 @@ describe('saving one of them', () => {
     )
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(Object.keys(bad.errors).sort()).toEqual(['menus.0.links.0.href', 'menus.0.links.0.label', 'menus.0.links.1.menu.links.0.href', 'menus.0.name', 'menus.1'])
+    // Links under an item, turned on with none in them, would quietly go when read back
+    const empty = parseSiteChrome(form('navigation', { menus: [{ id: 'top', name: 'Top', links: [{ href: '/about', label: 'About', menu: { description: 'Us', links: [] } }] }] }))
+    expect(!empty.ok && empty.errors).toEqual({ 'menus.0.links.0.menu': 'Add a link under “About”, or turn off links under it.' })
     const many = parseSiteChrome(form('navigation', { menus: [{ id: 'top', name: 'Top', links: Array.from({ length: 13 }, (_, i) => ({ href: `/p${i}`, label: `P${i}` })) }] }))
     expect(!many.ok && many.errors['menus.0.links']).toMatch(/12 links/)
   })

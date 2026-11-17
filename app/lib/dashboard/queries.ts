@@ -189,12 +189,19 @@ export async function listPages() {
 /** Every slide deck, newest change first; none before their migration has run */
 export async function listPresentations() {
   const { supabase } = await requireOfficer()
-  return orEmpty(await supabase.from('presentations').select('id, slug, title, status, visibility, published_at, updated_at, author_email, slides').order('updated_at', { ascending: false }))
+  return orEmpty(await supabase.from('presentations').select('id, slug, title, status, visibility, published_at, publish_at, unpublish_at, updated_at, author_email, slides').order('updated_at', { ascending: false }))
 }
 
 export async function getPresentation(id: string) {
   const { supabase } = await requireOfficer()
   return must<PresentationRow | null>(await supabase.from('presentations').select('*').eq('id', id).maybeSingle())
+}
+
+/** A presentation's speaker notes, by slide id; none before their migration has run */
+export async function getPresentationNotes(id: string): Promise<Record<string, string>> {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('presentation_notes').select('notes').eq('presentation_id', id).maybeSingle()
+  return error || !data || typeof data.notes !== 'object' ? {} : data.notes
 }
 
 /** Every page's name and address, and the page it sits under, for the editor's "Sits under" */
@@ -255,6 +262,13 @@ export async function getHomepageRow() {
 export async function listMenus(): Promise<{ id: string; name: string }[]> {
   const row = await getSiteChromeRow()
   return row ? navigationFrom(row.navigation).menus.map(({ id, name }) => ({ id, name })) : []
+}
+
+/** The pages (drafts too) that show one of the site's menus across their own top; none before that column's migration runs */
+export async function listPageMenuUses(): Promise<{ title: string; menu: string }[]> {
+  const { supabase } = await requireOfficer()
+  const { data, error } = await supabase.from('pages').select('title, header_menu').not('header_menu', 'is', null).order('title')
+  return error || !data ? [] : data.flatMap((p) => (p.header_menu ? [{ title: p.title, menu: p.header_menu }] : []))
 }
 
 /** The menu, header, footer, and search row, or null before its migration runs */

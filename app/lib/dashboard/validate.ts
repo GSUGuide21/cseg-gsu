@@ -1,11 +1,12 @@
 import { slugify } from '@/components/Form/Slug/slugify'
+import { deckSettings, shownSlides, SLIDE_LAYOUTS } from '@/lib/presentations'
 import { atlantaToIso } from '@/lib/dashboard/format'
 import { eventSlug } from '@/lib/events'
 import { CONTACT_FIELDS, parseService } from '@/lib/executives'
 import { PLACE_CATEGORIES, placesWithEateries } from '@/lib/data/places'
 import { parseSchedule, scheduleJson } from '@/lib/eateries'
 import { homepageErrors, homepageFrom, type HomeButton, type HomepageContent } from '@/lib/homepage'
-import { chromePartErrors, chromePartFrom, isChromePart, type ChromePart, type SiteChrome } from '@/lib/siteChrome'
+import { chromePartErrors, chromePartFrom, isChromePart, navigationFrom, type ChromePart, type SiteChrome } from '@/lib/siteChrome'
 import { BUILT_IN_PAGE_META, META_LIMITS } from '@/lib/pageMeta'
 import { CARD_ICONS } from '@/lib/richtext/blocks/cards'
 import { sectionId } from '@/lib/richtext/blocks/section'
@@ -13,6 +14,7 @@ import {
   POST_CATEGORIES,
   PAGE_SECTIONS_MAX,
   PRESENTATION_DESCRIPTION_MAX,
+  PRESENTATION_NOTES_MAX,
   PRESENTATION_SLIDES_MAX,
   PRESENTATION_VISIBILITIES,
   type PresentationVisibility,
@@ -144,7 +146,7 @@ export const isPublicUrl = (url: string) => {
   return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168))
 }
 
-/** A presentation's slides, sent as JSON: each with an id, a title, and its writing; anything that isn't one is dropped */
+/** A presentation's slides, sent as JSON: each with an id, a title, its writing, and how it's laid out; anything that isn't one is dropped */
 export function parseSlides(raw: FormDataEntryValue | null): PresentationSlide[] {
   let list: unknown
   try {
@@ -156,14 +158,42 @@ export function parseSlides(raw: FormDataEntryValue | null): PresentationSlide[]
   return list
     .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
     .slice(0, PRESENTATION_SLIDES_MAX)
-    .map((s, i) => ({
-      id: typeof s.id === 'string' && /^[\w-]{1,64}$/.test(s.id) ? s.id : `slide-${i + 1}`,
-      title: typeof s.title === 'string' ? s.title.replace(/\s+/g, ' ').trim().slice(0, SECTION_TITLE_MAX) : '',
-      body: typeof s.body === 'string' ? s.body : '',
-    }))
+    .map((s, i) => {
+      const layout = SLIDE_LAYOUTS.find((l) => l.value === s.layout)?.value
+      const image = typeof s.image === 'string' && /^https:\/\//.test(s.image.trim()) ? s.image.trim() : ''
+      return {
+        id: typeof s.id === 'string' && /^[\w-]{1,64}$/.test(s.id) ? s.id : `slide-${i + 1}`,
+        title: typeof s.title === 'string' ? s.title.replace(/\s+/g, ' ').trim().slice(0, SECTION_TITLE_MAX) : '',
+        body: typeof s.body === 'string' ? s.body : '',
+        // Only what differs from a plain slide is kept
+        ...(layout && layout !== 'content' ? { layout } : {}),
+        ...(image ? { image } : {}),
+        ...(s.hidden === true ? { hidden: true } : {}),
+      }
+    })
 }
 
-/** A presentation: a title, a web address, a line about it, and its slides. A draft can be empty; a published one can't. */
+/** Speaker notes, sent as JSON by slide id: only for slides that are there, trimmed, and none that are empty */
+export function parseSlideNotes(raw: FormDataEntryValue | null, slides: readonly PresentationSlide[]): Record<string, string> {
+  let given: unknown
+  try {
+    given = typeof raw === 'string' && raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+  if (!given || typeof given !== 'object' || Array.isArray(given)) return {}
+  const notes: Record<string, string> = {}
+  for (const { id } of slides) {
+    const note = (given as Record<string, unknown>)[id]
+    if (typeof note === 'string' && note.trim()) notes[id] = note.trim().slice(0, PRESENTATION_NOTES_MAX)
+  }
+  return notes
+}
+
+/**
+ * A presentation: a title, a web address, a line about it, its slides and their speaker notes,
+ * who can see it, and when it's up. A draft can be empty; a published one can't.
+ */
 export function parsePresentation(form: FormData) {
   const errors: FieldErrors = {}
   const title = text(form.get('title'))
@@ -178,7 +208,28 @@ export function parsePresentation(form: FormData) {
   const visibility = (text(form.get('visibility')) || 'public') as PresentationVisibility
   if (!PRESENTATION_VISIBILITIES.some((v) => v.value === visibility)) errors.visibility = 'Pick who can see it.'
   if (status === 'published' && !slides.length) errors.slides = 'Add a slide before publishing.'
-  return done(errors, { title, slug, status, visibility, description, slides })
+  else if (status === 'published' && !shownSlides(slides).length) errors.slides = 'Every slide is hidden. Show one before publishing.'
+  let settings: unknown = null
+  try {
+    settings = JSON.parse(text(form.get('settings')) || '{}')
+  } catch {
+    // Not JSON: the defaults
+  }
+  // When it's live, sent as ISO times (the form converts from Atlanta's clock)
+  const when = (key: string) => {
+    const v = optional(form.get(key))
+    if (!v) return null
+    const t = Date.parse(v)
+    if (Number.isNaN(t)) {
+      errors[key] = 'Pick a date and time.'
+      return null
+    }
+    return new Date(t).toISOString()
+  }
+  const publishAt = when('publish_at')
+  const unpublishAt = when('unpublish_at')
+  if (publishAt && unpublishAt && unpublishAt <= publishAt) errors.unpublish_at = 'Take it down after it goes up.'
+  return done(errors, { title, slug, status, visibility, description, slides, settings: deckSettings(settings), publish_at: publishAt, unpublish_at: unpublishAt, notes: parseSlideNotes(form.get('notes'), slides) })
 }
 
 /** Where the site's menu can list a page */
@@ -986,9 +1037,15 @@ export function parseHomepage(form: FormData): Parsed<HomepageContent> {
     hero: {
       eyebrow: read.hero.eyebrow.trim(),
       title: read.hero.title.trim(),
+      subtitle: read.hero.subtitle.trim(),
       lead: read.hero.lead.trim(),
-      primary: trimButton(read.hero.primary) ?? read.hero.primary,
-      secondary: trimButton(read.hero.secondary),
+      buttons: read.hero.buttons.map((b) => ({ ...b, label: b.label.trim(), href: b.href.trim() })),
+      media: {
+        ...read.hero.media,
+        image: { src: read.hero.media.image.src.trim(), alt: read.hero.media.image.alt.trim() },
+        video: { src: read.hero.media.video.src.trim(), poster: read.hero.media.video.poster.trim() },
+        slides: read.hero.media.slides.map((s) => ({ src: s.src.trim(), alt: s.alt.trim() })),
+      },
     },
     sections: read.sections.map((s) => ({
       ...s,
@@ -998,6 +1055,8 @@ export function parseHomepage(form: FormData): Parsed<HomepageContent> {
       lead: s.lead.trim(),
       cta: trimButton(s.cta),
       ...(s.quietTitle !== undefined ? { quietTitle: s.quietTitle.trim(), quietLead: (s.quietLead ?? '').trim() } : {}),
+      // A card's icon is one the site has, or none
+      ...(s.items ? { items: s.items.map((i) => ({ icon: i.icon in CARD_ICONS ? i.icon : '', title: i.title.trim(), body: i.body.trim() })) } : {}),
     })),
   }
   return done(homepageErrors(content), content)
@@ -1069,6 +1128,7 @@ export function parseSiteChrome(form: FormData): Parsed<ChromeSave> {
   const part = form.get('part')
   const raw = json(form.get('content'))
   if (!isChromePart(part) || raw === null) return { ok: false, errors: { content: 'Couldn’t read that; reload and try again.' } }
-  const content = trimmed(chromePartFrom(part, raw))
+  // Menus are read as sent, empty sets of links-under included, so the check can say so
+  const content = trimmed(part === 'navigation' ? navigationFrom(raw, true) : chromePartFrom(part, raw))
   return done(chromePartErrors(part, content), { part, content } as ChromeSave)
 }

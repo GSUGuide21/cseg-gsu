@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useState, type FC, type ReactNode } from 'react'
@@ -24,6 +24,8 @@ const folds = (section: NavSection): section is NavSection & { label: string } =
 /** Which folding sections are open, by heading: as each starts out, then as the person left them */
 type Folds = Record<string, boolean>
 
+const headingText = 'text-[0.8rem] font-semibold text-ink-soft'
+
 const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; open: Folds; onToggle: (label: string) => void; idPrefix: string; onNavigate?: () => void }> = ({
   nav,
   pathname,
@@ -33,80 +35,102 @@ const NavLinks: FC<{ nav: NavSection[]; pathname: string; collapsed: boolean; op
   idPrefix,
   onNavigate,
 }) => (
-  <div className={cn('flex flex-col', collapsed ? 'gap-2' : 'gap-4')}>
+  <div className={cn('flex flex-col', collapsed ? 'gap-2' : 'gap-3')}>
     {nav.map((section, s) => {
       // Narrowed to icons there are no headings to fold under, so every link shows
       const folding = folds(section) && !collapsed
       const shown = !folding || (open[section.label!] ?? section.defaultOpen ?? true)
       const listId = `${idPrefix}-${s}`
-      // Folded shut, the heading carries what its links would have: how many are waiting
+      // Folded shut, the heading carries what its links would have: how many are waiting, and whether the page is in it
       const waiting = section.items.reduce((sum, i) => sum + (i.count ?? 0), 0)
+      const holdsHere = section.items.some((i) => isActive(i, pathname))
+      // Links under a heading sit indented on a guide line, as a tree's do
+      const nested = !!section.label && !collapsed
+      const heading = folding ? (
+        <button
+          type="button"
+          aria-expanded={shown}
+          aria-controls={listId}
+          // One name, said whole: what's marked on a folded heading (the page is in here, how many wait) is in it
+          aria-label={[section.label, !shown && holdsHere ? 'the page you’re on is in here' : '', !shown && waiting ? `${waiting} waiting` : ''].filter(Boolean).join(', ')}
+          onClick={() => onToggle(section.label!)}
+          className={cn(
+            'group flex w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left transition-colors hover:bg-brand-tint hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
+            headingText
+          )}
+        >
+          <ChevronRight size={14} aria-hidden className={cn('-ml-1 shrink-0 text-muted transition-transform duration-200 group-hover:text-ink motion-reduce:transition-none', shown && 'rotate-90')} />
+          <span className="min-w-0 flex-1 truncate">{section.label}</span>
+          {!shown && holdsHere ? (
+            <span className="size-2 shrink-0 rounded-full bg-brand" aria-hidden />
+          ) : null}
+          {!shown && waiting ? (
+            <span className="min-w-5 rounded-full bg-brand-solid px-1.5 py-0.5 text-center text-[0.7rem] leading-none text-white tabular-nums">
+              {waiting}
+              <span className="sr-only"> waiting</span>
+            </span>
+          ) : null}
+        </button>
+      ) : null
       return (
-      // Narrowed to icons there are no headings, so a line tells the sections apart
-      <div key={s} className={cn('flex flex-col gap-1', collapsed && s > 0 && 'border-t border-line pt-2')}>
-        {folding ? (
-          <button
-            type="button"
-            aria-expanded={shown}
-            aria-controls={listId}
-            onClick={() => onToggle(section.label!)}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left text-[0.7rem] font-bold tracking-wider text-muted uppercase transition-colors hover:bg-brand-tint hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
-          >
-            <span className="min-w-0 flex-1 truncate">{section.label}</span>
-            {!shown && waiting ? (
-              <span className="min-w-5 rounded-full bg-brand-solid px-1.5 py-0.5 text-center text-[0.7rem] leading-none tracking-normal text-white tabular-nums">
-                {waiting}
-                <span className="sr-only"> waiting</span>
-              </span>
-            ) : null}
-            <ChevronDown size={14} aria-hidden className={cn('shrink-0 transition-transform duration-200 motion-reduce:transition-none', !shown && '-rotate-90')} />
-          </button>
-        ) : section.label ? (
-          <p className={cn('m-0 px-3 pb-1 text-[0.7rem] font-bold tracking-wider text-muted uppercase', collapsed && 'sr-only')}>{section.label}</p>
-        ) : null}
-        {section.description && shown && !collapsed ? <p className="m-0 px-3 pb-1 text-[0.75rem] leading-snug text-muted">{section.description}</p> : null}
-        <ul id={listId} hidden={!shown} className={cn('m-0 list-none flex-col gap-0.5 p-0', shown && 'flex')}>
-          {section.items.map((item) => {
-            const on = isActive(item, pathname)
-            const link = (
-              <Link
-                href={item.href}
-                aria-current={on ? 'page' : undefined}
-                onClick={onNavigate}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 text-[0.9rem] font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
-                  '[&>svg]:size-4.5 [&>svg]:shrink-0',
-                  // The focus ring sits outside the blue fill, where it can be seen
-                  on ? 'bg-linear-to-r from-brand-solid to-brand-bright text-white shadow-card focus-visible:outline-offset-2' : 'text-ink-soft hover:bg-brand-tint hover:text-ink',
-                  collapsed && 'size-10 justify-center px-0 py-0'
-                )}
-              >
-                {item.icon}
-                <span className={cn('min-w-0 flex-1 truncate', collapsed && 'sr-only')}>{item.label}</span>
-                {item.count !== undefined ? (
-                  collapsed ? (
-                    <span className="sr-only">, {item.count}</span>
+        // Narrowed to icons there are no headings, so a line tells the sections apart
+        <div key={s} className={cn('flex flex-col gap-1', collapsed && s > 0 && 'border-t border-line pt-2')}>
+          {heading ? (
+            // What the section holds, on hover or focus, read after its name
+            section.description ? (
+              <Tooltip content={section.description} side="right" delay={500}>
+                {heading}
+              </Tooltip>
+            ) : (
+              heading
+            )
+          ) : section.label ? (
+            <p className={cn('m-0 px-3 py-1.5', headingText, collapsed && 'sr-only')}>{section.label}</p>
+          ) : null}
+          <ul id={listId} hidden={!shown} className={cn('m-0 list-none flex-col gap-0.5 p-0', shown && 'flex', nested && 'ml-4 border-l border-line pl-2')}>
+            {section.items.map((item) => {
+              const on = isActive(item, pathname)
+              const link = (
+                <Link
+                  href={item.href}
+                  aria-current={on ? 'page' : undefined}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-1.5 text-[0.875rem] font-semibold no-underline transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand',
+                    '[&>svg]:size-4 [&>svg]:shrink-0',
+                    // The focus ring sits outside the blue fill, where it can be seen
+                    on ? 'bg-linear-to-r from-brand-solid to-brand-bright text-white shadow-card focus-visible:outline-offset-2' : 'text-ink-soft hover:bg-brand-tint hover:text-ink',
+                    // Unheaded links (Overview, Settings) line up with the headings above and below them
+                    !nested && !collapsed && 'py-2 [&>svg]:size-4.5',
+                    collapsed && 'size-10 justify-center px-0 py-0'
+                  )}
+                >
+                  {item.icon}
+                  <span className={cn('min-w-0 flex-1 truncate', collapsed && 'sr-only')}>{item.label}</span>
+                  {item.count !== undefined ? (
+                    collapsed ? (
+                      <span className="sr-only">, {item.count}</span>
+                    ) : (
+                      <span className={cn('min-w-5 rounded-full px-1.5 py-0.5 text-center text-[0.7rem] leading-none tabular-nums', on ? 'bg-white/20' : 'bg-brand-solid text-white')}>{item.count}</span>
+                    )
+                  ) : null}
+                </Link>
+              )
+              return (
+                <li key={item.href} className={cn(collapsed && 'flex justify-center')}>
+                  {/* Narrowed to icons, the name shows on hover and focus */}
+                  {collapsed ? (
+                    <Tooltip content={item.label} side="right" delay={150}>
+                      {link}
+                    </Tooltip>
                   ) : (
-                    <span className={cn('min-w-5 rounded-full px-1.5 py-0.5 text-center text-[0.7rem] leading-none tabular-nums', on ? 'bg-white/20' : 'bg-fill')}>{item.count}</span>
-                  )
-                ) : null}
-              </Link>
-            )
-            return (
-              <li key={item.href} className={cn(collapsed && 'flex justify-center')}>
-                {/* Narrowed to icons, the name shows on hover and focus */}
-                {collapsed ? (
-                  <Tooltip content={item.label} side="right" delay={150}>
-                    {link}
-                  </Tooltip>
-                ) : (
-                  link
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+                    link
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )
     })}
   </div>

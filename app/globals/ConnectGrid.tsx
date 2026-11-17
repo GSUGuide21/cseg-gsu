@@ -13,16 +13,17 @@ type Tile = { key: string; href: string; label: string; detail: string; Icon: Co
 /**
  * Every way to reach CSEG as a tile: each network with a link (as officers set them
  * in Settings), then the officers' email. A network without a link yet (GroupMe, Discord)
- * stays out until it has one. For the homepage's Connect section.
+ * stays out until it has one; so does any in `hidden` (a network, or "email"), as the
+ * homepage editor sets it. For the homepage's Connect section.
  */
-export const ConnectGrid: FC<{ className?: string }> = ({ className }) => {
+export const ConnectGrid: FC<{ hidden?: readonly string[]; className?: string }> = ({ hidden = [], className }) => {
   const { links, contactEmail } = useClubDetails()
   const tiles: Tile[] = [
     ...(Object.keys(links) as SocialNetwork[])
-      .filter((n) => links[n])
+      .filter((n) => links[n] && SOCIAL_META[n])
       .map((n) => ({ key: n, href: links[n], ...SOCIAL_META[n], external: true })),
     ...(contactEmail ? [{ key: 'email', href: `mailto:${contactEmail}`, label: 'Email', detail: contactEmail, Icon: Mail, external: false }] : []),
-  ]
+  ].filter((t) => !hidden.includes(t.key))
 
   return (
     <ul

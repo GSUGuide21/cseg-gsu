@@ -9,6 +9,8 @@ import { cn } from '@/lib/cn'
 import type { Route } from '@/lib/wayfinding'
 
 export type TourPanelProps = {
+  /** The tours to pick from */
+  tours?: readonly Tour[]
   tour: Tour
   /** The tour's stops that are on the map, with their places */
   stops: readonly { stop: TourStop; place: Place }[]
@@ -26,7 +28,7 @@ export type TourPanelProps = {
 }
 
 /** Side panel for tours: pick one, then numbered stops along a line, the current one expanded, and back/next. */
-export const TourPanel: FC<TourPanelProps> = ({ tour, stops, onTour, step, onStep, position, legs, onOpenPlace, onFinish }) => {
+export const TourPanel: FC<TourPanelProps> = ({ tours = TOURS, tour, stops, onTour, step, onStep, position, legs, onOpenPlace, onFinish }) => {
   const last = stops.length - 1
   const walk = legs?.reduce((minutes, leg) => minutes + (leg?.minutes ?? 0), 0)
   const listRef = useRef<HTMLOListElement>(null)
@@ -41,7 +43,7 @@ export const TourPanel: FC<TourPanelProps> = ({ tour, stops, onTour, step, onSte
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-col gap-2 border-b border-line px-4 py-2.5">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choose a tour">
-          {TOURS.map((t) => (
+          {tours.map((t) => (
             <button
               key={t.id}
               type="button"

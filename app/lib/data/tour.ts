@@ -158,10 +158,10 @@ export const TOURS: readonly Tour[] = [
 ]
 
 /** The tour and 0-based stop a /map link opens on. `?tour=3` is an older link to a stop on the first tour. */
-export const tourFromLink = (tour?: string, stop?: string) => {
+export const tourFromLink = (tour?: string, stop?: string, tours: readonly Tour[] = TOURS) => {
   if (!tour) return undefined
   const stopOnly = /^\d+$/.test(tour)
-  const found = stopOnly ? TOURS[0] : TOURS.find((t) => t.id === tour)
+  const found = stopOnly ? tours[0] : tours.find((t) => t.id === tour)
   if (!found) return undefined
   const number = Number(stopOnly ? tour : stop)
   return { tour: found, step: Number.isInteger(number) && number >= 1 && number <= found.stops.length ? number - 1 : 0 }

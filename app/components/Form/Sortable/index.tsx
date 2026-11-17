@@ -91,6 +91,9 @@ export function Sortable<T>({
   const [grabbed, setGrabbed] = useState<string | null>(null)
   const before = useRef<readonly T[] | null>(null)
   const refocus = useRef<string | null>(null)
+  // Each item's row, by its key. Held directly rather than found by an attribute in the page, so a
+  // key that differs between the server's render and the browser's still finds its row.
+  const rowsByKey = useRef(new Map<string, HTMLLIElement>())
   const [announcement, setAnnouncement] = useState('')
   const helpId = useId()
   const horizontal = orientation === 'horizontal'
@@ -100,9 +103,8 @@ export function Sortable<T>({
   // Reordering moves the focused handle's element, which drops focus; put it back
   useEffect(() => {
     const key = refocus.current
-    if (!key || !listRef.current) return
-    const row = [...listRef.current.children].find((el) => (el as HTMLElement).dataset.sortableKey === key)
-    row?.querySelector<HTMLElement>('[data-sortable-handle]')?.focus()
+    if (!key) return
+    rowsByKey.current.get(key)?.querySelector<HTMLElement>('[data-sortable-handle]')?.focus()
     refocus.current = null
   })
 
@@ -304,7 +306,10 @@ export function Sortable<T>({
           return (
             <li
               key={key}
-              data-sortable-key={key}
+              ref={(el) => {
+                if (el) rowsByKey.current.set(key, el)
+                else rowsByKey.current.delete(key)
+              }}
               style={offset ? { transform: horizontal ? `translateX(${offset}px)` : `translateY(${offset}px)` } : undefined}
               className={cn(
                 'relative',

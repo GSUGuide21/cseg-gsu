@@ -1,3 +1,4 @@
+import { academicTermOn, nextTerm, type AcademicTerm } from '@/lib/academicTerm'
 import type { DuesMethod, DuesPaymentRow, SponsorRow, SponsorTier, TermRow } from '@/lib/supabase/types'
 
 type TermDates = Pick<TermRow, 'id' | 'starts_on' | 'ends_on'>
@@ -22,8 +23,38 @@ export const inTerm = (term: Pick<TermRow, 'starts_on' | 'ends_on'>, iso: string
 }
 
 /** Two terms can't share a day: the first other term these dates run into, or undefined */
-export const overlappingTerm = <T extends TermDates>(terms: readonly T[], term: { id?: string | null; starts_on: string; ends_on: string }) =>
+export const overlappingTerm = <T extends Pick<TermRow, 'starts_on' | 'ends_on'> & { id?: string | null }>(terms: readonly T[], term: { id?: string | null; starts_on: string; ends_on: string }) =>
   terms.find((t) => t.id !== term.id && t.starts_on <= term.ends_on && term.starts_on <= t.ends_on)
+
+type TermLike = Pick<TermRow, 'name' | 'starts_on' | 'ends_on'> & { id?: string | null }
+
+/** Whether a term from the calendar is already saved: by its name, or by running into a saved term's days */
+const isSaved = (terms: readonly TermLike[], t: AcademicTerm) => terms.some((s) => s.name.trim().toLowerCase() === t.name.toLowerCase()) || !!overlappingTerm(terms, t)
+
+/**
+ * The term the saved ones are missing today, worked out from the calendar (see academicTerm):
+ * the one in session, or on a break the one coming up. Null when a saved term covers today,
+ * or the term it would be is already saved.
+ */
+export const missingTerm = (terms: readonly TermLike[], today: string): AcademicTerm | null => {
+  if (terms.some((t) => t.starts_on <= today && today <= t.ends_on)) return null
+  const { term, inSession, next } = academicTermOn(today)
+  const candidate = inSession ? term : next
+  return isSaved(terms, candidate) ? null : candidate
+}
+
+/**
+ * The term a new one most likely is, to start the "Add a term" form from: the missing one,
+ * or else the first from the calendar after the last saved term (or today) that isn't saved
+ */
+export const termToAdd = (terms: readonly TermLike[], today: string): AcademicTerm => {
+  const missing = missingTerm(terms, today)
+  if (missing) return missing
+  const latest = terms.reduce((last, t) => (t.ends_on > last ? t.ends_on : last), today)
+  let candidate = academicTermOn(latest).next
+  for (let i = 0; i < 6 && isSaved(terms, candidate); i++) candidate = nextTerm(candidate)
+  return candidate
+}
 
 export const DUES_METHOD_LABELS: Record<DuesMethod, string> = { cash: 'Cash', card: 'Card', transfer: 'Transfer', waived: 'Waived', other: 'Other' }
 

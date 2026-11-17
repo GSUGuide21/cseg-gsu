@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { requireOfficer } from '@/lib/dashboard/dal'
-import { getSiteChromeRow } from '@/lib/dashboard/queries'
+import { getSiteChromeRow, listPageMenuUses } from '@/lib/dashboard/queries'
 import { CHROME_PARTS, isChromePart } from '@/lib/siteChrome'
 
 import { ChromePartView } from '../ChromePartView'
@@ -19,6 +19,7 @@ export default async function DashboardChromePartPage({ params, searchParams }: 
   await requireOfficer()
   const [{ part }, { menu }] = await Promise.all([params, searchParams])
   if (!isChromePart(part)) notFound()
+  const [row, pageMenus] = await Promise.all([getSiteChromeRow(), part === 'navigation' ? listPageMenuUses() : []])
   // Keyed, so going from one part to another starts from that part's own saved copy
-  return <ChromePartView key={part} part={part} row={await getSiteChromeRow()} initialMenu={Array.isArray(menu) ? menu[0] : menu} />
+  return <ChromePartView key={part} part={part} row={row} pageMenus={pageMenus} initialMenu={Array.isArray(menu) ? menu[0] : menu} />
 }

@@ -1,11 +1,12 @@
 'use client'
 /* eslint-disable @next/next/no-img-element -- the demo's images are generated SVG data URIs, which next/image doesn't optimize */
 
-import { ArrowRight, BadgeCheck, Bell, CalendarDays, Check, Copy, Filter, Heart, Info, Lock, Mail, Plus, Share2, Star, Trash2 } from 'lucide-react'
+import { ArrowRight, BadgeCheck, Bell, CalendarDays, Check, Copy, FileText, Filter, Folder, Heart, Info, Lock, Mail, Plus, Share2, Star, Trash2 } from 'lucide-react'
 import { useState, type FC, type ReactNode } from 'react'
 
 import {
   Accordion,
+  Tree,
   Alert,
   Badge,
   Breadcrumb,
@@ -314,6 +315,49 @@ export const ComponentsDemo: FC = () => {
             items={[
               { title: 'Parking', content: 'Decks K, M, and T are closest.' },
               { title: 'MARTA', content: 'Five Points and Georgia State stations.' },
+            ]}
+          />
+        </Demo>
+
+        <Demo title="Tree" note="Branches open and close; arrow keys move, Enter picks, * opens every branch beside the current one, and typing a letter jumps to it. The second is small, without guide lines, and each row is a link.">
+          <Tree
+            aria-label="Site pages"
+            defaultExpanded={['guides']}
+            defaultSelected="parking"
+            nodes={[
+              { id: 'about', label: 'About', icon: <FileText /> },
+              {
+                id: 'guides',
+                label: 'Guides',
+                icon: <Folder />,
+                meta: 3,
+                children: [
+                  { id: 'parking', label: 'Parking', icon: <FileText /> },
+                  { id: 'food', label: 'Where to eat', icon: <FileText /> },
+                  {
+                    id: 'study',
+                    label: 'Study spots',
+                    icon: <Folder />,
+                    meta: 2,
+                    children: [
+                      { id: 'library', label: 'Library North', icon: <FileText /> },
+                      { id: 'quiet', label: 'Quiet floors', icon: <FileText />, disabled: true },
+                    ],
+                  },
+                ],
+              },
+              { id: 'events', label: 'Events', icon: <Folder />, meta: 1, children: [{ id: 'socials', label: 'Socials', icon: <FileText /> }] },
+            ]}
+          />
+          <Tree
+            aria-label="Dashboard sections"
+            size="sm"
+            guides={false}
+            selectable={false}
+            defaultExpanded="all"
+            nodes={[
+              { id: 'content', label: 'Content', children: [{ id: 'posts', label: 'Posts', href: '/dashboard/posts' }, { id: 'pages', label: 'Pages', href: '/dashboard/pages' }] },
+              { id: 'club', label: 'Club', children: [{ id: 'members', label: 'Members', href: '/dashboard/members' }] },
             ]}
           />
         </Demo>

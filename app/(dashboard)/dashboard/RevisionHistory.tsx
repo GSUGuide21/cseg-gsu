@@ -8,7 +8,7 @@ import { getRevision, listRevisions, restoreRevision, type RevisionSummary } fro
 import { cn } from '@/lib/cn'
 import { DocumentBody, PageSections } from '@/lib/richtext'
 import { upgradeEateriesBlocks } from '@/lib/richtext/blocks'
-import type { PageSection } from '@/lib/supabase/types'
+import type { PageSection, PresentationSlide } from '@/lib/supabase/types'
 
 const when = (iso: string) =>
   new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso))
@@ -17,11 +17,27 @@ const when = (iso: string) =>
 const Snapshot: FC<{ snap: Record<string, unknown> }> = ({ snap }) => {
   const str = (k: string) => (typeof snap[k] === 'string' ? (snap[k] as string) : '')
   const sections = Array.isArray(snap.sections) ? (snap.sections as PageSection[]) : []
+  // A presentation's version: its slides, one under the other
+  const slides = Array.isArray(snap.slides) ? (snap.slides as PresentationSlide[]) : null
   return (
     <article className="flex flex-col gap-3">
       <h2 className="m-0 text-[1.4rem] leading-tight font-extrabold text-ink">{str('title') || 'Untitled'}</h2>
       {str('subtitle') || str('description') || str('excerpt') ? <p className="m-0 text-muted">{str('subtitle') || str('description') || str('excerpt')}</p> : null}
-      {snap.layout === 'sections' ? (
+      {slides ? (
+        slides.length ? (
+          <ol className="m-0 flex list-none flex-col gap-3 p-0">
+            {slides.map((s, i) => (
+              <li key={s.id} className="flex flex-col gap-2 rounded-lg border border-line p-3">
+                <span className="text-[0.72rem] font-bold tracking-wide text-muted uppercase">Slide {i + 1}</span>
+                {s.title ? <h3 className="m-0 text-[1.05rem] font-bold text-ink">{s.title}</h3> : null}
+                {s.body.trim() ? <DocumentBody source={s.body} /> : null}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="m-0 text-muted">No slides.</p>
+        )
+      ) : snap.layout === 'sections' ? (
         <PageSections sections={sections.map((s) => ({ ...s, body: upgradeEateriesBlocks(s.body) }))} />
       ) : str('body').trim() ? (
         <DocumentBody source={upgradeEateriesBlocks(str('body'))} />
@@ -38,7 +54,7 @@ const Snapshot: FC<{ snap: Record<string, unknown> }> = ({ snap }) => {
  * is a save of its own, so it can be undone the same way.
  */
 export const RevisionHistory: FC<{
-  kind: 'page' | 'post'
+  kind: 'page' | 'post' | 'presentation'
   docId: string
   open: boolean
   onClose: () => void

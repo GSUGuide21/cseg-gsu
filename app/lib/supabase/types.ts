@@ -1,3 +1,5 @@
+import type { AlbumRow, DocumentRow, FormResponseRow, FormRow, OpportunityRow, PollKeyRow, PollResponseRow, PollRow, TestimonialRow, TourRow } from '@/lib/content/types'
+
 /**
  * The database's shape, matching supabase/migrations. Kept by hand; after changing the
  * schema, regenerate with `npx supabase gen types typescript --linked` and compare.
@@ -56,6 +58,8 @@ export const postCategoryLabel = (category: string | null | undefined) => POST_C
 /** How many slides a presentation holds at most */
 export const PRESENTATION_SLIDES_MAX = 80
 export const PRESENTATION_DESCRIPTION_MAX = 300
+/** How long one slide's speaker notes can be */
+export const PRESENTATION_NOTES_MAX = 4000
 
 /** Who can open a published presentation */
 export type PresentationVisibility = 'public' | 'unlisted' | 'private'
@@ -71,6 +75,22 @@ export type PresentationSlide = {
   id: string
   title: string
   body: string
+  /** How it's arranged; left out, a title with the writing under it */
+  layout?: SlideLayout
+  /** Its picture's address, for the layouts that show one */
+  image?: string
+  /** Kept in the deck but skipped when it's shown */
+  hidden?: boolean
+}
+
+/** How a slide is arranged */
+export type SlideLayout = 'content' | 'title' | 'section' | 'image-left' | 'image-right' | 'image-full'
+
+/** How a deck looks and plays: its colours, how a slide arrives, and seconds per slide when it plays by itself (0: it doesn't) */
+export type PresentationSettings = {
+  theme: 'site' | 'light' | 'dark' | 'brand' | 'paper'
+  transition: 'none' | 'fade' | 'slide'
+  autoplay: number
 }
 
 /** A slide deck, played at /presentations/its-slug */
@@ -83,14 +103,26 @@ export type PresentationRow = {
   status: PublishStatus
   /** Published, who can open it */
   visibility: PresentationVisibility
+  /** Its theme, transition, and autoplay; anything missing is the default (see deckSettings) */
+  settings: Partial<PresentationSettings>
   /** When it first went up */
   published_at: string | null
+  /** Published, it shows from here (null: right away) until unpublish_at (null: for good) */
+  publish_at: string | null
+  unpublish_at: string | null
   author_email: string | null
   /** How the site shows who made it; the officer list isn't public */
   author_name: string | null
   /** Who saved it last */
   updated_by: string | null
   created_at: string
+  updated_at: string
+}
+
+/** A presentation's speaker notes, by slide id. Officers only: kept apart from the slides, which the public can read. */
+export type PresentationNotesRow = {
+  presentation_id: string
+  notes: Record<string, string>
   updated_at: string
 }
 
@@ -239,6 +271,7 @@ export type RevisionRow<Doc> = {
 }
 export type PageRevisionRow = RevisionRow<PageRow> & { page_id: string }
 export type PostRevisionRow = RevisionRow<PostRow> & { post_id: string }
+export type PresentationRevisionRow = RevisionRow<PresentationRow> & { presentation_id: string }
 
 /** A weekly hours range, as saved: days 0 (Sunday) to 6, times "HH:mm" */
 export type HoursRangeJson = { days: number[]; open: string; close: string }
@@ -649,7 +682,7 @@ export type Database = {
       event_checkins: Table<CheckinRow, 'event_name' | 'member_id' | 'email' | 'checked_in_at' | 'checked_in_by'>
       posts: Table<PostRow, 'excerpt' | 'body' | 'cover_image_url' | 'status' | 'published_at' | 'publish_at' | 'unpublish_at' | 'category' | 'featured' | 'author_email' | 'author_name' | 'review_requested' | 'review_note'>
       pages: Table<PageRow, 'description' | 'subtitle' | 'layout' | 'sections' | 'body' | 'status' | 'eyebrow' | 'share_image_url' | 'show_toc' | 'show_updated' | 'publish_at' | 'unpublish_at' | 'review_requested' | 'review_note' | 'updated_by' | 'parent_id' | 'nav_placement' | 'nav_label' | 'nav_sort' | 'header_menu'>
-      presentations: Table<PresentationRow, 'description' | 'slides' | 'status' | 'visibility' | 'published_at' | 'author_email' | 'author_name' | 'updated_by'>
+      presentations: Table<PresentationRow, 'description' | 'slides' | 'status' | 'visibility' | 'settings' | 'publish_at' | 'unpublish_at' | 'published_at' | 'author_email' | 'author_name' | 'updated_by'>
       guide_picks: Table<GuidePickRow, 'description' | 'icon' | 'items' | 'sort' | 'published'>
       page_redirects: Table<PageRedirectRow, 'created_at'>
       map_places: Table<MapPlaceRow, 'slug' | 'category' | 'address' | 'description' | 'aliases' | 'also_in' | 'published' | 'tip'>
@@ -664,6 +697,8 @@ export type Database = {
       contact_messages: Table<ContactMessageRow, 'id' | 'subject' | 'read_at' | 'read_by'>
       page_revisions: Table<PageRevisionRow, 'saved_by' | 'saved_at'>
       post_revisions: Table<PostRevisionRow, 'saved_by' | 'saved_at'>
+      presentation_revisions: Table<PresentationRevisionRow, 'saved_by' | 'saved_at'>
+      presentation_notes: Table<PresentationNotesRow, 'notes'>
       eateries: Table<
         EateryRow,
         'dining_hall' | 'address' | 'description' | 'hours' | 'schedule' | 'status' | 'note' | 'lat' | 'lng' | 'locations' | 'place_id' | 'url' | 'aliases' | 'sort' | 'published' | 'checked_on' | 'tip'
@@ -682,12 +717,24 @@ export type Database = {
       meeting_minutes: Table<MeetingMinutesRow, 'attendees' | 'notes' | 'file_url' | 'recorded_by'>
       sponsors: Table<SponsorRow, 'href' | 'logo_url' | 'tier' | 'blurb' | 'starts_on' | 'ends_on' | 'sort' | 'published'>
       activity: Table<ActivityRow, 'actor_email' | 'subject'>
+      albums: Table<AlbumRow, 'description' | 'taken_on' | 'cover_url' | 'photos' | 'published'>
+      tours: Table<TourRow, 'intro' | 'stops' | 'sort' | 'published'>
+      documents: Table<DocumentRow, 'description' | 'category' | 'file_name' | 'sort' | 'published'>
+      testimonials: Table<TestimonialRow, 'role' | 'photo_url' | 'sort' | 'published'>
+      opportunities: Table<OpportunityRow, 'organization' | 'kind' | 'description' | 'url' | 'location' | 'deadline' | 'published'>
+      polls: Table<PollRow, 'kind' | 'description' | 'questions' | 'published' | 'closes_at' | 'results_public'>
+      poll_keys: Table<PollKeyRow, 'correct'>
+      poll_responses: Table<PollResponseRow, 'id' | 'score' | 'created_at'>
+      forms: Table<FormRow, 'description' | 'fields' | 'success_message' | 'published' | 'closes_at'>
+      form_responses: Table<FormResponseRow, 'id' | 'created_at'>
     }
     Views: { [_ in never]: never }
     Functions: {
       is_officer: { Args: { [_ in never]: never }; Returns: boolean }
       is_admin: { Args: { [_ in never]: never }; Returns: boolean }
       is_staff: { Args: { [_ in never]: never }; Returns: boolean }
+      submit_poll_response: { Args: { p_poll: string; p_voter: string; p_answers: Record<string, string> }; Returns: unknown }
+      poll_results: { Args: { p_poll: string }; Returns: unknown }
     }
     Enums: {
       officer_role: OfficerRole

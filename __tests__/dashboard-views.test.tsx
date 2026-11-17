@@ -545,7 +545,8 @@ describe('Homepage settings', () => {
 
   it('starts from the built-in words and saves edits as one JSON copy', async () => {
     wrap(<HomepageView row={row} />)
-    const title = screen.getByLabelText('Title', { selector: 'input[value="Survive. Engage. Graduate."]' })
+    const title = within(screen.getByRole('region', { name: 'Top of the page' })).getByLabelText('Title')
+    expect(title).toHaveValue('Survive. Engage. Graduate.')
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
     fireEvent.change(title, { target: { value: 'Welcome, Panthers' } })
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
@@ -559,7 +560,7 @@ describe('Homepage settings', () => {
   it('brings back the homepage as it was before the last save', () => {
     wrap(<HomepageView row={{ ...row, content: { hero: { title: 'Oops' } }, previous_content: { hero: { title: 'Welcome back' } } }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Bring back the previous version' }))
-    expect(screen.getByLabelText('Title', { selector: 'input[value="Welcome back"]' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Top of the page' })).getByLabelText('Title')).toHaveValue('Welcome back')
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
   })
 
@@ -567,6 +568,85 @@ describe('Homepage settings', () => {
     wrap(<HomepageView row={row} />)
     fireEvent.click(screen.getAllByRole('switch', { name: 'Show' })[0])
     expect(screen.getByText('Hidden')).toBeInTheDocument()
+  })
+
+  it('moves a section, as the page editor does', () => {
+    wrap(<HomepageView row={row} />)
+    const order = () => screen.getAllByRole('heading', { level: 2, name: /^Section \d/ }).map((h) => h.textContent)
+    expect(order()[0]).toMatch(/^Section 1 · What we do/)
+    fireEvent.click(screen.getByRole('button', { name: 'Move What we do down' }))
+    expect(order()[0]).toMatch(/^Section 1 · Events/)
+    expect(order()[1]).toMatch(/^Section 2 · What we do/)
+    expect(screen.getByRole('button', { name: 'Move Events up' })).toBeDisabled()
+  })
+
+  it('saves with Ctrl+S, only when something changed', async () => {
+    actions.saveHomepage.mockClear()
+    wrap(<HomepageView row={row} />)
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true })
+    expect(actions.saveHomepage).not.toHaveBeenCalled()
+    fireEvent.change(within(screen.getByRole('region', { name: 'Top of the page' })).getByLabelText('Title'), { target: { value: 'Hi' } })
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true })
+    })
+    expect(actions.saveHomepage).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers back words never saved, kept in this browser', () => {
+    window.localStorage.setItem('cseg:draft:homepage:new', JSON.stringify({ savedAt: Date.now(), snapshot: JSON.stringify({ hero: { title: 'Half-typed' } }) }))
+    wrap(<HomepageView row={row} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Restore it' }))
+    expect(within(screen.getByRole('region', { name: 'Top of the page' })).getByLabelText('Title')).toHaveValue('Half-typed')
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+    window.localStorage.clear()
+  })
+
+  it('edits what the sections hold: cards, steps, and how many events', async () => {
+    actions.saveHomepage.mockClear()
+    wrap(<HomepageView row={row} />)
+    const offerings = screen.getByRole('region', { name: /What we do/ })
+    fireEvent.change(within(offerings).getByLabelText('Card 1 title'), { target: { value: 'Free food' } })
+    fireEvent.click(within(within(offerings).getByRole('radiogroup', { name: 'Card 1 icon' })).getByRole('radio', { name: 'Food' }))
+    fireEvent.click(within(offerings).getByRole('button', { name: 'Remove card 4' }))
+    const join = screen.getByRole('region', { name: /Join us/ })
+    fireEvent.click(within(join).getByRole('button', { name: 'Add a step' }))
+    fireEvent.change(within(join).getByLabelText('Step 4 title'), { target: { value: 'Pay dues' } })
+    fireEvent.click(within(screen.getByRole('region', { name: /Events/ })).getByRole('radio', { name: '3' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+    const sent = JSON.parse((actions.saveHomepage.mock.calls[0][0] as FormData).get('content') as string)
+    const of = (id: string) => sent.sections.find((s: { id: string }) => s.id === id)
+    expect(of('offerings').items).toHaveLength(3)
+    expect(of('offerings').items[0]).toMatchObject({ icon: 'food', title: 'Free food' })
+    expect(of('join').items.map((i: { title: string }) => i.title)).toEqual(['Join on PIN', 'Come to an event', 'Get involved', 'Pay dues'])
+    expect(of('events').count).toBe(3)
+  })
+
+  it('sets the hero’s subtitle, buttons, and a slideshow behind it', async () => {
+    actions.saveHomepage.mockClear()
+    wrap(<HomepageView row={row} />)
+    const hero = within(screen.getByRole('region', { name: 'Top of the page' }))
+    fireEvent.change(hero.getByLabelText('Subtitle'), { target: { value: 'Welcome home' } })
+    fireEvent.click(hero.getByRole('button', { name: 'Remove button 2' }))
+    fireEvent.click(hero.getByRole('button', { name: 'Add a button' }))
+    fireEvent.change(within(hero.getByRole('listitem', { name: 'Button 2' })).getByLabelText('Words'), { target: { value: 'Events' } })
+    fireEvent.change(within(hero.getByRole('listitem', { name: 'Button 2' })).getByLabelText('Link'), { target: { value: '/events' } })
+    fireEvent.click(hero.getByRole('radio', { name: 'Slideshow' }))
+    for (const n of [1, 2]) {
+      fireEvent.click(hero.getByRole('button', { name: 'Add a picture' }))
+      fireEvent.change(within(hero.getByRole('listitem', { name: `Picture ${n}` })).getByPlaceholderText('https://…'), { target: { value: `/slide-${n}.jpg` } })
+    }
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+    const sent = JSON.parse((actions.saveHomepage.mock.calls[0][0] as FormData).get('content') as string).hero
+    expect(sent.subtitle).toBe('Welcome home')
+    expect(sent.buttons).toEqual([
+      { label: 'Join CSEG →', href: '/join', style: 'primary' },
+      { label: 'Events', href: '/events', style: 'outline' },
+    ])
+    expect(sent.media).toMatchObject({ kind: 'slideshow', slides: [{ src: '/slide-1.jpg', alt: '' }, { src: '/slide-2.jpg', alt: '' }] })
   })
 
   it('says when the table is missing', () => {

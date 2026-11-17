@@ -82,10 +82,28 @@ describe('the dashboard’s club screens', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
-  it('Dues: with no terms yet, points to where they’re added', () => {
-    wrap(<DuesView members={MEMBERS} terms={[]} payments={[]} duesAmount={null} isAdmin />)
-    expect(screen.getByText('Add a term first')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '/dashboard/settings')
+  it('Dues: with no terms yet, names the one it is by the calendar, and points to where it’s added', () => {
+    jest.useFakeTimers({ now: new Date('2026-11-17T12:00:00-05:00'), doNotFake: ['setTimeout', 'setInterval', 'queueMicrotask', 'requestAnimationFrame'] })
+    try {
+      wrap(<DuesView members={MEMBERS} terms={[]} payments={[]} duesAmount={null} isAdmin />)
+      expect(screen.getByText('Add Fall 2026 first')).toBeInTheDocument()
+      expect(screen.getByText(/Add Fall 2026 under Settings/)).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '/dashboard/settings')
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('Dues: says when today’s term isn’t set up, though earlier ones are', () => {
+    jest.useFakeTimers({ now: new Date('2026-11-17T12:00:00-05:00'), doNotFake: ['setTimeout', 'setInterval', 'queueMicrotask', 'requestAnimationFrame'] })
+    try {
+      const spring = { id: 's', name: 'Spring 2026', starts_on: '2026-01-12', ends_on: '2026-05-08', created_at: '', updated_at: '' }
+      wrap(<DuesView members={MEMBERS} terms={[spring]} payments={[]} duesAmount={null} isAdmin />)
+      expect(screen.getByText('Fall 2026 isn’t set up as a term yet')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Add it in Settings' })).toHaveAttribute('href', '/dashboard/settings')
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('Members: shows who’s paid for the current term, once there is one', () => {

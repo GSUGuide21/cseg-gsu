@@ -1,6 +1,6 @@
 'use client'
 
-import { Menu, Search, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -9,7 +9,8 @@ import { isNavActive, navWithPages, type NavItem, type NavLink } from '@/globals
 import { Wordmark } from '@/globals/Logo'
 import { iconButton } from '@/globals/ui/styles'
 import { cn } from '@/lib/cn'
-import { BUILT_IN_CHROME, headerLinks, type HeaderContent } from '@/lib/siteChrome'
+import { BUILT_IN_CHROME, headerLinks, withoutButtonPage, type HeaderContent, type SearchContent } from '@/lib/siteChrome'
+import { SiteSearch } from '@/globals/Search/SiteSearch'
 
 const BUILT_IN_LINKS = headerLinks(BUILT_IN_CHROME)
 import { DesktopNav } from './DesktopNav'
@@ -25,14 +26,16 @@ export type HeaderProps = {
   pageMenus?: Readonly<Record<string, readonly NavItem[]>>
   /** What sits beside the menu, as the dashboard has it; the built-in set when left out */
   header?: HeaderContent
+  /** The search's words (its placeholder, suggestions), as the dashboard has them */
+  search?: SearchContent
 }
 
-export const Header = ({ pages = [], links: siteLinks = BUILT_IN_LINKS, pageMenus, header = BUILT_IN_CHROME.header }: HeaderProps) => {
+export const Header = ({ pages = [], links: siteLinks = BUILT_IN_LINKS, pageMenus, header = BUILT_IN_CHROME.header, search = BUILT_IN_CHROME.search }: HeaderProps) => {
   const pathname = usePathname()
   const { cta } = header
   const links = pageMenus?.[pathname] ?? siteLinks
-  // The button's page is promoted to a button on desktop, so the text nav omits it
-  const desktopLinks = useMemo(() => navWithPages(links.filter((l) => l.href !== cta?.href), pages), [links, cta, pages])
+  // The button's page is promoted to a button on desktop, so the text nav omits a plain link to it
+  const desktopLinks = useMemo(() => navWithPages(withoutButtonPage(links, cta), pages), [links, cta, pages])
   const mobileLinks = useMemo(() => [...links, ...pages.map(({ href, label }) => ({ href, label }))], [links, pages])
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -101,11 +104,7 @@ export const Header = ({ pages = [], links: siteLinks = BUILT_IN_LINKS, pageMenu
             <DesktopNav links={desktopLinks} isActive={activeFor} onMenuChange={setSubnavOpen} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
-            {header.search ? (
-              <Link href="/search" aria-label="Search the site" title="Search" className={iconButton({ size: 'md' })}>
-                <Search size={18} aria-hidden />
-              </Link>
-            ) : null}
+            {header.search ? <SiteSearch words={search} /> : null}
             {header.themeToggle ? <HeaderThemeToggle /> : null}
             {cta ? (
               <Link

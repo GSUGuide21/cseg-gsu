@@ -1,11 +1,11 @@
 'use client'
 
-import { Menu, Moon, PanelBottom, PanelTop, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, ChevronRight, FolderOpen, Link2, Menu, Moon, PanelBottom, PanelTop, Plus, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, type FC, type ReactNode } from 'react'
 
-import { Alert, Badge, Button, useNotify } from '@/components'
+import { Alert, Badge, Button, Tree, useNotify, type TreeNode } from '@/components'
 import { Field, Input, Select, Sortable, SortableHandle, Switch, TextArea } from '@/components/Form'
 import type { NavItem, NavMenuLink } from '@/globals/config/nav'
 import { inlineLink } from '@/globals/ui/styles'
@@ -25,11 +25,13 @@ import {
   menuById,
   menuUses,
   siteChromeFrom,
+  withoutButtonPage,
   type ChromePart,
   type FooterContent,
   type HeaderContent,
   type NavigationContent,
   type NavMenu,
+  type PageMenuUse,
   type SearchContent,
   type SiteChrome,
 } from '@/lib/siteChrome'
@@ -157,135 +159,166 @@ const EditMenuLink: FC<{ id: string | null }> = ({ id }) =>
 
 type PartProps<T> = { value: T; onChange: (value: T) => void; errors: Errors; chrome: SiteChrome }
 
-// ── Navigation: the menus ───────────────────────────────────────────────────
+// ── Navigation: the menus, as a tree ────────────────────────────────────────
 
-/** One link of a menu: its words and where it goes, and the links under it */
-const MenuLinkFields: FC<{ link: NavItem; onChange: (l: NavItem) => void; errors: Errors; at: string; handle: ReactNode; onRemove: () => void; name: string }> = ({ link, onChange, errors, at, handle, onRemove, name }) => {
-  const sub = link.menu?.links ?? []
-  const setSub = (links: NavMenuLink[]) => onChange({ ...link, menu: { description: link.menu?.description ?? '', links } })
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
-      <div className="flex items-start gap-2">
-        <span className="pt-6">{handle}</span>
-        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
-          <Field label="Words" error={errors[`${at}.label`]}>
-            <Input value={link.label} onChange={(e) => onChange({ ...link, label: e.target.value })} />
-          </Field>
-          <Field label="Link" error={errors[`${at}.href`]}>
-            <Input value={link.href} onChange={(e) => onChange({ ...link, href: e.target.value })} placeholder="/about" />
-          </Field>
-        </div>
-        <span className="pt-6">
-          <RemoveButton name={name} onClick={onRemove} />
-        </span>
-      </div>
-      <Switch size="sm" checked={!!link.menu} onCheckedChange={(on) => onChange(on ? { ...link, menu: { description: '', links: [{ href: link.href, label: link.label }] } } : { href: link.href, label: link.label })}>
-        Links under {name}
-      </Switch>
-      {link.menu ? (
-        <div className="ml-1 flex flex-col gap-3 border-l-2 border-line pl-4">
-          <Field label="A line introducing them" description="Beside the links, in the header on wide screens." error={errors[`${at}.menu.description`]}>
-            <Input value={link.menu.description} onChange={(e) => onChange({ ...link, menu: { description: e.target.value, links: sub } })} />
-          </Field>
-          {errors[`${at}.menu`] ? <Alert tone="danger">{errors[`${at}.menu`]}</Alert> : null}
-          <Sortable
-            aria-label={`Links under ${name}`}
-            items={sub}
-            onItemsChange={setSub}
-            getKey={keyOf}
-            getLabel={(l) => `${l.label || 'Untitled link'} under ${name}`}
-            className="gap-3"
-            renderItem={(l, { index: j, handleProps }) => {
-              const setOne = (next: NavMenuLink) => setSub(replaceAt(sub, j, keep(l, next)))
-              return (
-                <div className="flex flex-col gap-3 rounded-lg bg-fill p-3">
-                  <div className="flex items-start gap-2">
-                    <span className="pt-6">
-                      <SortableHandle {...handleProps} />
-                    </span>
-                    <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
-                      <Field label="Words" error={errors[`${at}.menu.links.${j}.label`]}>
-                        <Input value={l.label} onChange={(e) => setOne({ ...l, label: e.target.value })} />
-                      </Field>
-                      <Field label="Link" error={errors[`${at}.menu.links.${j}.href`]}>
-                        <Input value={l.href} onChange={(e) => setOne({ ...l, href: e.target.value })} placeholder="/about#faq" />
-                      </Field>
-                    </div>
-                    <span className="pt-6">
-                      <RemoveButton name={`${l.label || `link ${j + 1}`} under ${name}`} onClick={() => setSub(removeAt(sub, j))} />
-                    </span>
-                  </div>
-                  <Field label="A line about it" error={errors[`${at}.menu.links.${j}.description`]}>
-                    <Input value={l.description ?? ''} onChange={(e) => setOne({ href: l.href, label: l.label, ...(e.target.value ? { description: e.target.value } : {}) })} />
-                  </Field>
-                </div>
-              )
-            }}
-          />
-          <AddButton disabled={sub.length >= CHROME_LIMITS.subLinks} onClick={() => setSub([...sub, { href: '', label: '' }])}>
-            Add a link under {name}
-          </AddButton>
-        </div>
-      ) : null}
-    </div>
-  )
+/** Where an item sits: a menu, a link in it, or a link under one of those */
+type Spot = { menu: number; link?: number; sub?: number }
+
+/** Tree ids: menu:<id>, link:<id>:<key>, sub:<id>:<key>:<key> (menu ids and keys hold no colons) */
+const menuNode = (m: NavMenu) => `menu:${m.id}`
+const linkNode = (m: NavMenu, l: NavItem) => `link:${m.id}:${keyOf(l)}`
+const subNode = (m: NavMenu, l: NavItem, s: NavMenuLink) => `sub:${m.id}:${keyOf(l)}:${keyOf(s)}`
+
+/** The item a tree id points at, or null once it's gone */
+const spotOf = (menus: readonly NavMenu[], id: string | null): Spot | null => {
+  if (!id) return null
+  const [kind, menuId, linkKey, subKey] = id.split(':')
+  const menu = menus.findIndex((m) => m.id === menuId)
+  if (menu < 0) return null
+  if (kind === 'menu') return { menu }
+  const link = menus[menu].links.findIndex((l) => keyOf(l) === linkKey)
+  if (link < 0) return null
+  if (kind === 'link') return { menu, link }
+  const sub = menus[menu].links[link].menu?.links.findIndex((s) => keyOf(s) === subKey) ?? -1
+  return sub < 0 ? null : { menu, link, sub }
 }
 
-const NavigationFields: FC<PartProps<NavigationContent> & { initialMenu?: string }> = ({ value, onChange, errors, chrome, initialMenu }) => {
+/** The field-path prefix of an item's problems: menus.0, menus.0.links.2, menus.0.links.2.menu.links.1 */
+const pathOf = (s: Spot) => `menus.${s.menu}${s.link === undefined ? '' : `.links.${s.link}${s.sub === undefined ? '' : `.menu.links.${s.sub}`}`}`
+
+const hasProblem = (errors: Errors, path: string) => Object.keys(errors).some((k) => errors[k] && (k === path || k.startsWith(`${path}.`)))
+
+const Problem: FC = () => (
+  <span className="inline-flex items-center gap-1 font-semibold text-danger">
+    <AlertTriangle size={13} aria-hidden /> Needs a look
+  </span>
+)
+
+/** A link of a list, in one line: its words and where it goes, to open it in the tree or take it out */
+const LinkRow: FC<{ label: string; href: string; problem: boolean; handle: ReactNode; onOpen: () => void; onRemove: () => void; under?: number }> = ({ label, href, problem, handle, onOpen, onRemove, under }) => (
+  <div className={cn('flex items-center gap-2 rounded-lg border bg-surface px-2 py-1.5', problem ? 'border-danger/50' : 'border-line')}>
+    {handle}
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open ${label || 'untitled link'}${under ? `, ${under === 1 ? '1 link' : `${under} links`} under it` : ''}`}
+      className="flex min-w-0 flex-1 cursor-pointer flex-col items-start rounded-md px-1 py-0.5 text-left hover:bg-fill focus-visible:outline-2 focus-visible:outline-brand">
+      <span className="flex max-w-full items-center gap-2 text-[0.9rem] font-semibold text-ink">
+        <span className="truncate">{label || 'Untitled link'}</span>
+        {under ? <span className="shrink-0 text-[0.75rem] font-normal text-muted">{under === 1 ? '1 link under it' : `${under} links under it`}</span> : null}
+      </span>
+      <span className="max-w-full truncate text-[0.8rem] text-muted">{href || 'No link yet'}</span>
+    </button>
+    {problem ? <Problem /> : null}
+    <RemoveButton name={label || 'this link'} onClick={onRemove} />
+  </div>
+)
+
+const NavigationFields: FC<PartProps<NavigationContent> & { initialMenu?: string; pageMenus: readonly PageMenuUse[] }> = ({ value, onChange, errors, chrome, initialMenu, pageMenus }) => {
   const { confirm } = useNotify()
   const { menus } = value
-  const [openId, setOpenId] = useState(() => (menus.some((m) => m.id === initialMenu) ? initialMenu! : menus[0]?.id))
-  const at = Math.max(0, menus.findIndex((m) => m.id === openId))
-  const menu = menus[at]
+  const startMenu = menus.find((m) => m.id === initialMenu) ?? menus[0]
+  const [selected, setSelected] = useState<string | null>(() => (startMenu ? menuNode(startMenu) : null))
+  const [expanded, setExpanded] = useState<string[]>(() => (startMenu ? [menuNode(startMenu)] : []))
   const setMenus = (next: NavMenu[]) => onChange({ menus: next })
-  const setMenu = (next: NavMenu) => setMenus(replaceAt(menus, at, next))
-  const key = `menus.${at}`
-  // A problem in a menu that isn't open would otherwise go unseen
-  const withProblems = new Set(Object.keys(errors).flatMap((k) => (errors[k] && k.startsWith('menus.') ? [Number(k.split('.')[1])] : [])))
+  const uses = (id: string) => menuUses(chrome, id, pageMenus)
 
-  const add = () => {
-    let id = `menu-${Date.now().toString(36)}`
-    while (menus.some((m) => m.id === id)) id += 'x'
-    setMenus([...menus, { id, name: 'New menu', links: [{ href: '', label: '' }] }])
-    setOpenId(id)
+  // What's open: the picked item, or (once it's gone) the nearest of what held it
+  const spot = spotOf(menus, selected) ?? (menus[0] ? { menu: 0 } : null)
+  const open = (id: string, ...parents: string[]) => {
+    setSelected(id)
+    setExpanded((all) => [...new Set([...all, ...parents, id])])
   }
 
-  const remove = async () => {
-    const uses = menuUses(chrome, menu.id)
+  const setMenu = (at: number, next: NavMenu) => setMenus(replaceAt(menus, at, keep(menus[at], next)))
+  const setLink = (m: number, i: number, next: NavItem) => setMenu(m, { ...menus[m], links: replaceAt(menus[m].links, i, keep(menus[m].links[i], next)) })
+  const setSubs = (m: number, i: number, links: NavMenuLink[]) => {
+    const link = menus[m].links[i]
+    setLink(m, i, { ...link, menu: { description: link.menu?.description ?? '', links } })
+  }
+
+  const addMenu = () => {
+    let id = `menu-${Date.now().toString(36)}`
+    while (menus.some((m) => m.id === id)) id += 'x'
+    const link = { href: '', label: '' }
+    const menu: NavMenu = { id, name: 'New menu', links: [link] }
+    setMenus([...menus, menu])
+    open(linkNode(menu, link), menuNode(menu))
+  }
+  const addLink = (m: number) => {
+    const link = { href: '', label: '' }
+    setMenu(m, { ...menus[m], links: [...menus[m].links, link] })
+    open(linkNode(menus[m], link), menuNode(menus[m]))
+  }
+  const addSub = (m: number, i: number) => {
+    const sub = { href: '', label: '' }
+    const link = menus[m].links[i]
+    setSubs(m, i, [...(link.menu?.links ?? []), sub])
+    open(subNode(menus[m], link, sub), menuNode(menus[m]), linkNode(menus[m], link))
+  }
+
+  const removeMenu = async (m: number) => {
+    const menu = menus[m]
+    const where = uses(menu.id)
     const ok = await confirm({
       title: `Remove “${menu.name || 'this menu'}”?`,
-      message: uses.length ? `It’s shown in ${uses.join(' and ')}, which will go without it once you save.` : 'It isn’t shown anywhere on the site. Nothing changes until you save.',
+      message: where.length ? `It’s shown in ${where.join(', ')}, which will go without it once you save.` : 'It isn’t shown anywhere on the site. Nothing changes until you save.',
       confirmLabel: 'Remove it',
     })
     if (!ok) return
-    const next = removeAt(menus, at)
+    const next = removeAt(menus, m)
     setMenus(next)
-    setOpenId(next[Math.max(0, at - 1)]?.id)
+    const neighbour = next[Math.max(0, m - 1)]
+    setSelected(neighbour ? menuNode(neighbour) : null)
+  }
+  const removeLink = (m: number, i: number) => {
+    setMenu(m, { ...menus[m], links: removeAt(menus[m].links, i) })
+    setSelected(menuNode(menus[m]))
+  }
+  const removeSub = (m: number, i: number, j: number) => {
+    setSubs(m, i, removeAt(menus[m].links[i].menu?.links ?? [], j))
+    setSelected(linkNode(menus[m], menus[m].links[i]))
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      {errors.menus ? <Alert tone="danger">{errors.menus}</Alert> : null}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Menus">
-        {menus.map((m, i) => (
-          <Button key={m.id} size="sm" variant={m.id === menu?.id ? undefined : 'outline'} aria-pressed={m.id === menu?.id} onClick={() => setOpenId(m.id)}>
-            {m.name || 'Untitled menu'}
-            {withProblems.has(i) ? ' (needs a look)' : ''}
-          </Button>
-        ))}
-        <Button size="sm" variant="ghost" leading={<Plus size={14} aria-hidden />} disabled={menus.length >= CHROME_LIMITS.menus} onClick={add}>
-          New menu
-        </Button>
-      </div>
+  // ── The tree: every menu, its links, and the links under them ──
+  const nodes: TreeNode[] = menus.map((menu, m) => {
+    const where = uses(menu.id)
+    return {
+      id: menuNode(menu),
+      label: menu.name || 'Untitled menu',
+      icon: <Menu />,
+      meta: hasProblem(errors, `menus.${m}`) ? <Problem /> : where.length ? where.length === 1 ? where[0].split(': ')[0] : `${where.length} places` : 'Not shown',
+      children: menu.links.map((link, i) => ({
+        id: linkNode(menu, link),
+        label: link.label || 'Untitled link',
+        icon: link.menu ? <FolderOpen /> : <Link2 />,
+        meta: hasProblem(errors, `menus.${m}.links.${i}`) ? <Problem /> : undefined,
+        children: link.menu?.links.map((sub, j) => ({
+          id: subNode(menu, link, sub),
+          label: sub.label || 'Untitled link',
+          icon: <Link2 />,
+          meta: hasProblem(errors, `menus.${m}.links.${i}.menu.links.${j}`) ? <Problem /> : undefined,
+        })),
+      })),
+    }
+  })
 
-      {menu ? (
+  // ── The picked item's fields ──
+  const panel = (): ReactNode => {
+    if (!spot) return <p className="m-0 text-[0.9rem] text-muted">No menus yet.</p>
+    const menu = menus[spot.menu]
+    const at = pathOf(spot)
+
+    if (spot.link === undefined) {
+      const where = uses(menu.id)
+      return (
         <Card
           title={menu.name || 'Untitled menu'}
           description={
-            menuUses(chrome, menu.id).length ? (
+            where.length ? (
               <span className="flex flex-wrap items-center gap-1.5">
                 Shown in
-                {menuUses(chrome, menu.id).map((u) => (
+                {where.map((u) => (
                   <Badge key={u} size="sm">
                     {u}
                   </Badge>
@@ -301,40 +334,40 @@ const NavigationFields: FC<PartProps<NavigationContent> & { initialMenu?: string
                 <Link href="/dashboard/site/footer" className={inlineLink}>
                   Footer
                 </Link>
-                .
+                , or pick it for a page’s header in Pages.
               </>
             )
           }
           actions={
-            <Button size="sm" variant="ghost" leading={<Trash2 size={14} aria-hidden />} disabled={menus.length <= 1} onClick={remove}>
+            <Button size="sm" variant="ghost" leading={<Trash2 size={14} aria-hidden />} disabled={menus.length <= 1} onClick={() => removeMenu(spot.menu)}>
               Remove menu
             </Button>
           }
         >
-          {errors[key] ? <Alert tone="danger">{errors[key]}</Alert> : null}
-          <Field label="Menu name" description="What it’s called here, and its heading where it’s a footer column." error={errors[`${key}.name`]} className="sm:max-w-xs">
-            <Input value={menu.name} onChange={(e) => setMenu({ ...menu, name: e.target.value })} />
+          {errors[at] ? <Alert tone="danger">{errors[at]}</Alert> : null}
+          <Field label="Menu name" description="What it’s called here, and its heading where it’s a footer column." error={errors[`${at}.name`]} className="sm:max-w-xs">
+            <Input value={menu.name} onChange={(e) => setMenu(spot.menu, { ...menu, name: e.target.value })} />
           </Field>
-          {errors[`${key}.links`] ? <Alert tone="danger">{errors[`${key}.links`]}</Alert> : null}
+          {errors[`${at}.links`] ? <Alert tone="danger">{errors[`${at}.links`]}</Alert> : null}
           {menu.links.length ? (
             <>
-              <p className="m-0 text-[0.85rem] text-muted">{DRAG_HINT}</p>
+              <p className="m-0 text-[0.85rem] text-muted">{DRAG_HINT} Pick a link to change it.</p>
               <Sortable
                 aria-label={`Links in ${menu.name || 'this menu'}`}
                 items={menu.links}
-                onItemsChange={(links) => setMenu({ ...menu, links })}
+                onItemsChange={(links) => setMenu(spot.menu, { ...menu, links })}
                 getKey={keyOf}
                 getLabel={(l) => l.label || 'Untitled link'}
-                className="gap-3"
+                className="gap-2"
                 renderItem={(link, { index: i, handleProps }) => (
-                  <MenuLinkFields
-                    link={link}
-                    name={link.label || `link ${i + 1}`}
-                    onChange={(next) => setMenu({ ...menu, links: replaceAt(menu.links, i, keep(link, next)) })}
-                    onRemove={() => setMenu({ ...menu, links: removeAt(menu.links, i) })}
-                    errors={errors}
-                    at={`${key}.links.${i}`}
+                  <LinkRow
+                    label={link.label}
+                    href={link.href}
+                    under={link.menu?.links.length}
+                    problem={hasProblem(errors, `${at}.links.${i}`)}
                     handle={<SortableHandle {...handleProps} />}
+                    onOpen={() => open(linkNode(menu, link), menuNode(menu))}
+                    onRemove={() => removeLink(spot.menu, i)}
                   />
                 )}
               />
@@ -342,11 +375,158 @@ const NavigationFields: FC<PartProps<NavigationContent> & { initialMenu?: string
           ) : (
             <p className="m-0 text-[0.9rem] text-muted">No links yet.</p>
           )}
-          <AddButton disabled={menu.links.length >= CHROME_LIMITS.links} onClick={() => setMenu({ ...menu, links: [...menu.links, { href: '', label: '' }] })}>
+          <AddButton disabled={menu.links.length >= CHROME_LIMITS.links} onClick={() => addLink(spot.menu)}>
             Add a link
           </AddButton>
         </Card>
-      ) : null}
+      )
+    }
+
+    const link = menu.links[spot.link]
+    const name = link.label || `link ${spot.link + 1}`
+    const crumbs = (
+      <span className="flex flex-wrap items-center gap-1 text-[0.85rem] text-muted">
+        <button type="button" onClick={() => setSelected(menuNode(menu))} className={cn(inlineLink, 'cursor-pointer')}>
+          {menu.name || 'Untitled menu'}
+        </button>
+        <ChevronRight size={13} aria-hidden />
+        {spot.sub === undefined ? (
+          <span>{name}</span>
+        ) : (
+          <>
+            <button type="button" onClick={() => setSelected(linkNode(menu, link))} className={cn(inlineLink, 'cursor-pointer')}>
+              {name}
+            </button>
+            <ChevronRight size={13} aria-hidden />
+            <span>{link.menu?.links[spot.sub].label || 'Untitled link'}</span>
+          </>
+        )}
+      </span>
+    )
+
+    if (spot.sub !== undefined) {
+      const subs = link.menu?.links ?? []
+      const sub = subs[spot.sub]
+      const setOne = (next: NavMenuLink) => setSubs(spot.menu, spot.link!, replaceAt(subs, spot.sub!, keep(sub, next)))
+      return (
+        <Card
+          title={sub.label || 'Untitled link'}
+          description={crumbs}
+          actions={
+            <Button size="sm" variant="ghost" leading={<Trash2 size={14} aria-hidden />} onClick={() => removeSub(spot.menu, spot.link!, spot.sub!)}>
+              Remove link
+            </Button>
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Words" error={errors[`${at}.label`]}>
+              <Input value={sub.label} onChange={(e) => setOne({ ...sub, label: e.target.value })} />
+            </Field>
+            <Field label="Link" error={errors[`${at}.href`]}>
+              <Input value={sub.href} onChange={(e) => setOne({ ...sub, href: e.target.value })} placeholder="/about#faq" />
+            </Field>
+          </div>
+          <Field label="A line about it" description="Under the words, in the header’s panel on wide screens." error={errors[`${at}.description`]}>
+            <Input value={sub.description ?? ''} onChange={(e) => setOne({ href: sub.href, label: sub.label, ...(e.target.value ? { description: e.target.value } : {}) })} />
+          </Field>
+        </Card>
+      )
+    }
+
+    const subs = link.menu?.links ?? []
+    return (
+      <Card
+        title={link.label || 'Untitled link'}
+        description={crumbs}
+        actions={
+          <Button size="sm" variant="ghost" leading={<Trash2 size={14} aria-hidden />} onClick={() => removeLink(spot.menu, spot.link!)}>
+            Remove link
+          </Button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Words" error={errors[`${at}.label`]}>
+            <Input value={link.label} onChange={(e) => setLink(spot.menu, spot.link!, { ...link, label: e.target.value })} />
+          </Field>
+          <Field label="Link" error={errors[`${at}.href`]}>
+            <Input value={link.href} onChange={(e) => setLink(spot.menu, spot.link!, { ...link, href: e.target.value })} placeholder="/about" />
+          </Field>
+        </div>
+        <Switch
+          checked={!!link.menu}
+          onCheckedChange={(on) => {
+            if (!on) return setLink(spot.menu, spot.link!, { href: link.href, label: link.label })
+            const first = { href: link.href, label: link.label }
+            setLink(spot.menu, spot.link!, { ...link, menu: { description: '', links: [first] } })
+            setExpanded((all) => [...new Set([...all, linkNode(menu, link)])])
+          }}
+          description="On wide screens they open as a panel under the header; on phones, as a list under it. Footer columns show only the link itself."
+        >
+          Links under {name}
+        </Switch>
+        {link.menu ? (
+          <div className="flex flex-col gap-3 border-l-2 border-line pl-4">
+            <Field label="A line introducing them" description="Beside the links, in the header on wide screens." error={errors[`${at}.menu.description`]}>
+              <Input value={link.menu.description} onChange={(e) => setLink(spot.menu, spot.link!, { ...link, menu: { description: e.target.value, links: subs } })} />
+            </Field>
+            {errors[`${at}.menu`] ? <Alert tone="danger">{errors[`${at}.menu`]}</Alert> : null}
+            {subs.length ? (
+              <Sortable
+                aria-label={`Links under ${name}`}
+                items={subs}
+                onItemsChange={(next) => setSubs(spot.menu, spot.link!, next)}
+                getKey={keyOf}
+                getLabel={(s) => `${s.label || 'Untitled link'} under ${name}`}
+                className="gap-2"
+                renderItem={(sub, { index: j, handleProps }) => (
+                  <LinkRow
+                    label={sub.label}
+                    href={sub.href}
+                    problem={hasProblem(errors, `${at}.menu.links.${j}`)}
+                    handle={<SortableHandle {...handleProps} />}
+                    onOpen={() => open(subNode(menu, link, sub), menuNode(menu), linkNode(menu, link))}
+                    onRemove={() => removeSub(spot.menu, spot.link!, j)}
+                  />
+                )}
+              />
+            ) : (
+              <p className="m-0 text-[0.9rem] text-muted">No links under it yet.</p>
+            )}
+            <AddButton disabled={subs.length >= CHROME_LIMITS.subLinks} onClick={() => addSub(spot.menu, spot.link!)}>
+              Add a link under {name}
+            </AddButton>
+          </div>
+        ) : null}
+      </Card>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {errors.menus ? <Alert tone="danger">{errors.menus}</Alert> : null}
+      <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <section aria-labelledby="menus-heading" className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-3 shadow-card lg:sticky lg:top-4">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <h2 id="menus-heading" className="m-0 text-[0.9rem] font-bold text-ink">
+              Menus
+            </h2>
+            <Button size="sm" variant="ghost" leading={<Plus size={14} aria-hidden />} disabled={menus.length >= CHROME_LIMITS.menus} onClick={addMenu}>
+              New menu
+            </Button>
+          </div>
+          <Tree
+            aria-labelledby="menus-heading"
+            size="sm"
+            nodes={nodes}
+            selected={spot ? (spot.link === undefined ? menuNode(menus[spot.menu]) : spot.sub === undefined ? linkNode(menus[spot.menu], menus[spot.menu].links[spot.link]) : subNode(menus[spot.menu], menus[spot.menu].links[spot.link], menus[spot.menu].links[spot.link].menu!.links[spot.sub])) : null}
+            onSelect={(id) => open(id)}
+            expanded={expanded}
+            onExpandedChange={setExpanded}
+          />
+          <p className="m-0 px-1 text-[0.78rem] text-muted">Arrow keys move through the tree; Right opens a menu, Enter picks it.</p>
+        </section>
+        <div className="min-w-0">{panel()}</div>
+      </div>
     </div>
   )
 }
@@ -355,7 +535,7 @@ const NavigationFields: FC<PartProps<NavigationContent> & { initialMenu?: string
 
 const HeaderFields: FC<PartProps<HeaderContent>> = ({ value, onChange, errors, chrome }) => {
   const { menus } = chrome.navigation
-  const links = headerLinks({ navigation: chrome.navigation, header: value }).filter((l) => l.href !== value.cta?.href)
+  const links = withoutButtonPage(headerLinks({ navigation: chrome.navigation, header: value }), value.cta)
   return (
     <div className="flex flex-col gap-4">
       <Preview label="Header preview">
@@ -595,7 +775,13 @@ const SearchFields: FC<PartProps<SearchContent>> = ({ value, onChange, errors })
  * (Navigation), the Search page's words, or the Header or Footer, which each pick the menus
  * that go in their places.
  */
-export const ChromePartView: FC<{ part: ChromePart; row: SiteChromeRow | null; initialMenu?: string }> = ({ part, row, initialMenu }) => {
+export const ChromePartView: FC<{
+  part: ChromePart
+  row: SiteChromeRow | null
+  initialMenu?: string
+  /** Pages showing one of the menus across their own top, for where each menu shows */
+  pageMenus?: readonly PageMenuUse[]
+}> = ({ part, row, initialMenu, pageMenus = [] }) => {
   const router = useRouter()
   const { confirm } = useNotify()
   const { pending, errors, run } = useAction()
@@ -646,7 +832,7 @@ export const ChromePartView: FC<{ part: ChromePart; row: SiteChromeRow | null; i
   const fields = (): ReactNode => {
     switch (part) {
       case 'navigation':
-        return <NavigationFields value={content as NavigationContent} onChange={setContent} errors={errors} chrome={now} initialMenu={initialMenu} />
+        return <NavigationFields value={content as NavigationContent} onChange={setContent} errors={errors} chrome={now} initialMenu={initialMenu} pageMenus={pageMenus} />
       case 'header':
         return <HeaderFields value={content as HeaderContent} onChange={setContent} errors={errors} chrome={now} />
       case 'footer':

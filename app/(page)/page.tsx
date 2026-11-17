@@ -37,20 +37,21 @@ export default async function HomePage() {
   const body = (s: HomeSection): { title: string; lead: string; children: ReactNode } => {
     switch (s.id) {
       case 'offerings':
-        return { title: s.title, lead: s.lead, children: <OfferingCards className="mt-2 w-full text-left" /> }
-      case 'events':
-        // Next events if any are scheduled, otherwise the most recent ones
+        return { title: s.title, lead: s.lead, children: <OfferingCards items={s.items} className="mt-2 w-full text-left" /> }
+      case 'events': {
+        // Next events if any are scheduled, otherwise the most recent ones (if officers want them)
+        const count = s.count ?? 2
+        const shown = upcoming.length ? upcoming.slice(0, count) : s.showPast === false ? [] : past.slice(0, count)
         return {
           title: upcoming.length ? s.title : (s.quietTitle ?? s.title),
           lead: upcoming.length ? s.lead : (s.quietLead ?? s.lead),
-          children: (
-            <EventGrid events={upcoming.length ? upcoming.slice(0, 2) : past.slice(0, 2)} past={!upcoming.length} className="mt-2 w-full text-left" />
-          ),
+          children: shown.length ? <EventGrid events={shown} past={!upcoming.length} className="mt-2 w-full text-left" /> : null,
         }
+      }
       case 'join':
-        return { title: s.title, lead: s.lead, children: <JoinSteps className="mt-2 w-full max-w-4xl text-left" /> }
+        return { title: s.title, lead: s.lead, children: <JoinSteps steps={s.items} className="mt-2 w-full max-w-4xl text-left" /> }
       case 'connect':
-        return { title: s.title, lead: s.lead, children: <ConnectGrid className="mt-2 max-w-4xl text-left" /> }
+        return { title: s.title, lead: s.lead, children: <ConnectGrid hidden={s.hidden} className="mt-2 max-w-4xl text-left" /> }
     }
   }
 
